@@ -22,6 +22,6 @@ Check if your results are similar to the products provided in the directory `exp
 
 ![Alt text](Figures/GamEqu_spirou-lsd.png?raw=true "Title")
 
-The user can change input parameters in the file `polar_param.py` to test different flavors of reduction.
+Change input parameters in the file `polar_param.py` to test different flavors of reduction.
 
 
