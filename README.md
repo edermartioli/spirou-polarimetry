@@ -6,7 +6,7 @@ To start using `SPIRou-Polarimetry`, first make sure you have all the following 
 
 `numpy`, `scipy`, `astropy`, `matplotlib`, `optparse`, `copy`
 
-Another option is to install python 3 via anaconda.
+Another option is to install Python 3 via anaconda.
 
 Then download all files in this repository and run the following example:
 
