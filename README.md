@@ -1,4 +1,4 @@
-# SPIRou-Polarimetry
+![Alt text](Figures/SPIRou-polarimetry.png?raw=true "Title")
 The spectro-polarimetry module for the SPIRou DRS.
 
 To start using the SPIRou-Polarimetry, first make sure you have the following depencies installed:
