@@ -33,26 +33,6 @@ def load_polar_parameters() :
     #         - Difference
     p['IC_POLAR_METHOD'] = 'Ratio'
 
-    #  Define the polarimetry continuum bin size                       - [pol_spirou]
-    p['IC_POLAR_CONT_BINSIZE'] = 900
-
-    #  Define the polarimetry continuum overlap size                   - [pol_spirou]
-    p['IC_POLAR_CONT_OVERLAP'] = 200
-
-    #  Fit polynomial to continuum polarization? (True = 1, False = 0) - [pol_spirou]
-    # If False it will use a cubic interpolation instead of polynomial fit
-    p['IC_POLAR_CONT_POLYNOMIAL_FIT'] = True
-
-    #  Define degree of polynomial to fit continuum polarization      - [pol_spirou]
-    p['IC_POLAR_CONT_DEG_POLYNOMIAL'] = 2
-    
-    #  Define the telluric mask for calculation of continnum          - [pol_spirou]
-    # noinspection PyPep8
-    p['IC_POLAR_CONT_TELLMASK'] = [[930, 967], [1109, 1167], [1326, 1491], [1782, 1979], [1997, 2027], [2047, 2076]]
-
-    # Remove continuum polarization (True = 1, False = 0)
-    p['IC_POLAR_REMOVE_CONTINUUM'] = True
-
     # Apply polarimetric sigma-clip cleanning (Works better if continuum is removed)
     p['IC_POLAR_CLEAN_BY_SIGMA_CLIPPING'] = True
     
@@ -100,4 +80,45 @@ def load_polar_parameters() :
     # Renormalize data before LSD analysis
     p['IC_POLAR_LSD_NORMALIZE'] = False
     
+    
+    ##### Select polarization continuum detection algorithm: 'IRAF' or 'MOVING_MEDIAN'
+    p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'] = 'MOVING_MEDIAN'
+    
+    ##### Select stokes I continuum detection algorithm: 'IRAF' or 'MOVING_MEDIAN'
+    p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'] = 'MOVING_MEDIAN'
+
+    #### Parameters below are for 'MOVING_MEDIAN' algorithm :
+    #  Fit polynomial to continuum polarization? (True = 1, False = 0) - [pol_spirou]
+    # If False it will use a cubic interpolation instead of polynomial fit
+    p['IC_POLAR_CONT_POLYNOMIAL_FIT'] = True
+    #  Define degree of polynomial to fit continuum polarization      - [pol_spirou]
+    p['IC_POLAR_CONT_DEG_POLYNOMIAL'] = 2
+    #  Define the polarimetry continuum bin size                       - [pol_spirou]
+    p['IC_POLAR_CONT_BINSIZE'] = 900
+    #  Define the polarimetry continuum overlap size                   - [pol_spirou]
+    p['IC_POLAR_CONT_OVERLAP'] = 200
+    #  Define the telluric mask for calculation of continnum          - [pol_spirou]
+    # noinspection PyPep8
+    p['IC_POLAR_CONT_TELLMASK'] = [[930, 967], [1109, 1167], [1326, 1491], [1782, 1979], [1997, 2027], [2047, 2076]]
+    #################################
+    
+    #### Parameters below are for 'IRAF' algorithm :
+    #function to fit to the polar continuum: must be 'polynomial' or 'spline3'
+    p['IC_POLAR_IRAF_CONT_FIT_FUNCTION'] = "polynomial"
+    #function to fit to the stokes I continuum: must be 'polynomial' or 'spline3'
+    p['IC_STOKESI_IRAF_CONT_FIT_FUNCTION'] = "polynomial"
+    # polar continuum fit function order: 'polynomial': degree or 'spline3': number of knots
+    p['IC_POLAR_IRAF_CONT_FUNCTION_ORDER'] = 3
+    # stokes I continuum fit function order: 'polynomial': degree or 'spline3': number of knots
+    p['IC_STOKESI_IRAF_CONT_FUNCTION_ORDER'] = 5
+    # plot Polarimetry continuum calculation using IRAF algorithm
+    p['IC_POLAR_IRAF_CONT_PLOT'] = False
+    # plot Stokes I continuum calculation using IRAF algorithm
+    p['IC_STOKESI_IRAF_CONT_PLOT'] = False
+    #################################
+
+    # Remove continuum polarization (True = 1, False = 0)
+    p['IC_POLAR_REMOVE_CONTINUUM'] = True
+    #-------------------------------------
+
     return p

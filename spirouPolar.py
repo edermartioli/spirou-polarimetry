@@ -25,6 +25,11 @@ from scipy import constants
 
 from copy import copy, deepcopy
 
+import pylab as pl
+import scipy as sp
+import scipy.interpolate as sint
+import scipy.signal as sig
+
 # =============================================================================
 # Define variables
 # =============================================================================
@@ -1186,6 +1191,7 @@ def calculate_continuum(p, loc, in_wavelength=True):
         stokes_ierr = np.append(stokes_ierr, loc['STOKESIERR'][order_num])
         null1 = np.append(null1, loc['NULL1'][order_num])
         null2 = np.append(null2, loc['NULL2'][order_num])
+
     # ---------------------------------------------------------------------
     # sort by wavelength (or pixel number)
     sortmask = np.argsort(wl)
@@ -1200,31 +1206,54 @@ def calculate_continuum(p, loc, in_wavelength=True):
     loc['FLAT_NULL2'] = null2[sortmask]
 
     # ---------------------------------------------------------------------
-    # calculate continuum flux
-    contflux, xbin, ybin = continuum(loc['FLAT_X'], loc['FLAT_STOKESI'],
+    if p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'] == 'MOVING_MEDIAN':
+        # calculate continuum flux
+        contflux, xbin, ybin = continuum(loc['FLAT_X'], loc['FLAT_STOKESI'],
                                     binsize=pol_binsize, overlap=pol_overlap,
                                     window=6, mode="max", use_linear_fit=True,
                                     telluric_bands=p['IC_POLAR_CONT_TELLMASK'])
+        loc['CONT_FLUX_XBIN'] = xbin
+        loc['CONT_FLUX_YBIN'] = ybin
+    
+    elif p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'] == 'IRAF':
+        contflux = fit_continuum(loc['FLAT_X'], loc['FLAT_STOKESI'],
+                                 function=p['IC_STOKESI_IRAF_CONT_FIT_FUNCTION'],
+                                 order=p['IC_STOKESI_IRAF_CONT_FUNCTION_ORDER'],
+                                 nit=5, rej_low=3.0,rej_high=3.0, grow=1,
+                                 med_filt=0, percentile_low=0., percentile_high=100.,
+                                 min_points=10, plot_fit=['IC_STOKESI_IRAF_CONT_PLOT'],
+                                 verbose=False)
+
     # ---------------------------------------------------------------------
     # save continuum data to loc
     loc['CONT_FLUX'] = contflux
-    loc['CONT_FLUX_XBIN'] = xbin
-    loc['CONT_FLUX_YBIN'] = ybin
 
     # normalize flux by continuum
     if p['IC_POLAR_NORMALIZE_STOKES_I'] :
         loc['FLAT_STOKESI'] /= loc['CONT_FLUX']
         loc['FLAT_STOKESIERR'] /= loc['CONT_FLUX']
 
-    # ---------------------------------------------------------------------
-    # calculate continuum polarization
-    contpol, xbinpol, ybinpol = continuum_polarization(loc['FLAT_X'], loc['FLAT_POL'],
-                                                binsize=pol_binsize, overlap=pol_overlap,
-                                                mode="median",
-                                                use_polynomail_fit=p['IC_POLAR_CONT_POLYNOMIAL_FIT'], deg_poly_fit = p['IC_POLAR_CONT_DEG_POLYNOMIAL'],
-                                                telluric_bands=p['IC_POLAR_CONT_TELLMASK'])
-    # ---------------------------------------------------------------------
 
+    if p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'] == 'MOVING_MEDIAN':
+        # ---------------------------------------------------------------------
+        # calculate continuum polarization
+        contpol, xbinpol, ybinpol = continuum_polarization(loc['FLAT_X'], loc['FLAT_POL'],
+                                                           binsize=pol_binsize, overlap=pol_overlap,
+                                                           mode="median",
+                                                           use_polynomail_fit=p['IC_POLAR_CONT_POLYNOMIAL_FIT'], deg_poly_fit = p['IC_POLAR_CONT_DEG_POLYNOMIAL'],
+                                                           telluric_bands=p['IC_POLAR_CONT_TELLMASK'])
+        loc['CONT_POL_XBIN'] = xbinpol
+        loc['CONT_POL_YBIN'] = ybinpol
+
+# ---------------------------------------------------------------------
+    elif p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'] == 'IRAF':
+        contpol = fit_continuum(loc['FLAT_X'], loc['FLAT_POL'],
+                                function=p['IC_POLAR_IRAF_CONT_FIT_FUNCTION'],
+                                order=p['IC_POLAR_IRAF_CONT_FUNCTION_ORDER'],
+                                nit=5, rej_low=3.0,rej_high=3.0, grow=1,
+                                med_filt=0, percentile_low=0., percentile_high=100.,
+                                min_points=10, plot_fit=p['IC_POLAR_IRAF_CONT_PLOT'],
+                                verbose=False)
 
     #plt.plot(loc['FLAT_X'], loc['FLAT_POL'],'.')
     #plt.plot(xbinpol, ybinpol,'o')
@@ -1233,8 +1262,6 @@ def calculate_continuum(p, loc, in_wavelength=True):
 
     # save continuum data to loc
     loc['CONT_POL'] = contpol
-    loc['CONT_POL_XBIN'] = xbinpol
-    loc['CONT_POL_YBIN'] = ybinpol
 
     # remove continuum polarization
     if p['IC_POLAR_REMOVE_CONTINUUM'] :
@@ -1473,8 +1500,6 @@ def polar_continuum_plot(p, loc, in_wavelengths=True):
     # get data from loc
     wl, pol = loc['FLAT_X'], 100.0 * (loc['FLAT_POL'] + loc['CONT_POL'])
     contpol = 100.0 * loc['CONT_POL']
-    contxbin, contybin = np.array(loc['CONT_POL_XBIN']), np.array(loc['CONT_POL_YBIN'])
-    contybin = 100. * contybin
     stokes = loc['STOKES']
     method, nexp = loc['METHOD'], loc['NEXPOSURES']
 
@@ -1494,10 +1519,16 @@ def polar_continuum_plot(p, loc, in_wavelengths=True):
     # ---------------------------------------------------------------------
     # plot polarimetry data
     frame.plot(wl, pol, linestyle='None', marker='.',
-               label='Degree of Polarization')
-    # plot continuum sample points
-    frame.plot(contxbin, contybin, linestyle='None', marker='o',
-               label='Continuum Samples')
+               label='Degree of Polarization', alpha=0.3)
+
+    if p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'] == 'MOVING_MEDIAN' :
+        contxbin, contybin = np.array(loc['CONT_POL_XBIN']), np.array(loc['CONT_POL_YBIN'])
+        contybin = 100. * contybin
+
+        # plot continuum sample points
+        frame.plot(contxbin, contybin, linestyle='None', marker='o',
+                   label='Continuum Samples')
+
     # plot continuum fit
     frame.plot(wl, contpol, label='Continuum Polarization')
     # ---------------------------------------------------------------------
@@ -1553,7 +1584,6 @@ def polar_stokes_i_plot(p, loc, in_wavelengths=True):
     plot_name = 'polar_stokes_i_plot'
     # get data from loc
     wl, stokes_i = loc['FLAT_X'], loc['FLAT_STOKESI'] * loc['CONT_FLUX']
-    contxbin, contybin = np.array(loc['CONT_FLUX_XBIN']), np.array(loc['CONT_FLUX_YBIN'])
     stokes_ierr = loc['FLAT_STOKESIERR'] * loc['CONT_FLUX']
     stokes = 'I'
     method, nexp = loc['METHOD'], loc['NEXPOSURES']
@@ -1572,9 +1602,13 @@ def polar_stokes_i_plot(p, loc, in_wavelengths=True):
     titleargs = [stokes, method, nexp]
     # ---------------------------------------------------------------------
     # plot stokes I data
-    frame.errorbar(wl, stokes_i, yerr=stokes_ierr, linestyle='None', fmt='.', label='Stokes I')
-    # plot continuum sample points
-    frame.plot(contxbin, contybin, linestyle='None', marker='o', label='Continuum Samples')
+    frame.errorbar(wl, stokes_i, yerr=stokes_ierr, linestyle='None', fmt='.', label='Stokes I', alpha=0.3)
+
+    if p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'] == 'MOVING_MEDIAN' :
+        contxbin, contybin = np.array(loc['CONT_FLUX_XBIN']), np.array(loc['CONT_FLUX_YBIN'])
+        # plot continuum sample points
+        frame.plot(contxbin, contybin, linestyle='None', marker='o', label='Continuum Samples')
+
     # plot continuum flux
     frame.plot(wl, loc['CONT_FLUX'], label='Continuum Flux for Normalization')
     # ---------------------------------------------------------------------
@@ -1959,3 +1993,179 @@ def convert_vacuum_to_air_wl(vacuum_wavelength, air_density=1.0) :
 def convert_air_to_vacuum_wl(air_wavelength, air_density=1.0) :
     vacuum_wavelength = air_wavelength * ( 1. + 1.e-6 * nrefrac(air_wavelength, density=air_density))
     return vacuum_wavelength
+
+
+def fit_continuum(wav, spec, function='polynomial', order=3, nit=5, rej_low=2.0,
+    rej_high=2.5, grow=1, med_filt=0, percentile_low=0., percentile_high=100.,
+    min_points=10, plot_fit=True, verbose=False):
+    """
+    Continuum fitting re-implemented from IRAF's 'continuum' function
+    in non-interactive mode only but with additional options.
+
+    :Parameters:
+    
+    wav: array(float)
+        abscissa values (wavelengths, velocities, ...)
+
+    spec: array(float)
+        spectrum values
+
+    function: str
+        function to fit to the continuum among 'polynomial', 'spline3'
+
+    order: int
+        fit function order:
+        'polynomial': degree (not number of parameters as in IRAF)
+        'spline3': number of knots
+
+    nit: int
+        number of iteractions of non-continuum points
+        see also 'min_points' parameter
+
+    rej_low: float
+        rejection threshold in unit of residul standard deviation for point
+        below the continuum
+
+    rej_high: float
+        same as rej_low for point above the continuum
+
+    grow: int
+        number of neighboring points to reject
+
+    med_filt: int
+        median filter the spectrum on 'med_filt' pixels prior to fit
+        improvement over IRAF function
+        'med_filt' must be an odd integer
+
+    percentile_low: float
+        reject point below below 'percentile_low' percentile prior to fit
+        improvement over IRAF function
+        "percentile_low' must be a float between 0. and 100.
+
+    percentile_high: float
+        same as percentile_low but reject points in percentile above
+        'percentile_high'
+        
+    min_points: int
+        stop rejection iterations when the number of points to fit is less than
+        'min_points'
+
+    plot_fit: bool
+        if true display two plots:
+            1. spectrum, fit function, rejected points
+            2. residual, rejected points
+
+    verbose: bool
+        if true fit information is printed on STDOUT:
+            * number of fit points
+            * RMS residual
+    """
+    mspec = np.ma.masked_array(spec, mask=np.zeros_like(spec))
+    # mask 1st and last point: avoid error when no point is masked
+    # [not in IRAF]
+    mspec.mask[0] = True
+    mspec.mask[-1] = True
+    
+    mspec = np.ma.masked_where(np.isnan(spec), mspec)
+    
+    # apply median filtering prior to fit
+    # [opt] [not in IRAF]
+    if int(med_filt):
+        fspec = sig.medfilt(spec, kernel_size=med_filt)
+    else:
+        fspec = spec
+    # consider only a fraction of the points within percentile range
+    # [opt] [not in IRAF]
+    mspec = np.ma.masked_where(fspec < np.percentile(fspec, percentile_low),
+        mspec)
+    mspec = np.ma.masked_where(fspec > np.percentile(fspec, percentile_high),
+        mspec)
+    # perform 1st fit
+    if function == 'polynomial':
+        coeff = np.polyfit(wav[~mspec.mask], spec[~mspec.mask], order)
+        cont = np.poly1d(coeff)(wav)
+    elif function == 'spline3':
+        knots = wav[0] + np.arange(order+1)[1:]*((wav[-1]-wav[0])/(order+1))
+        spl = sint.splrep(wav[~mspec.mask], spec[~mspec.mask], k=3, t=knots)
+        cont = sint.splev(wav, spl)
+    else:
+        raise(AttributeError)
+    # iteration loop: reject outliers and fit again
+    if nit > 0:
+        for it in range(nit):
+            res = fspec-cont
+            sigm = np.std(res[~mspec.mask])
+            # mask outliers
+            mspec1 = np.ma.masked_where(res < -rej_low*sigm, mspec)
+            mspec1 = np.ma.masked_where(res > rej_high*sigm, mspec1)
+            # exlude neighbors cf IRAF's continuum parameter 'grow'
+            if grow > 0:
+                for sl in np.ma.clump_masked(mspec1):
+                    for ii in range(sl.start-grow, sl.start):
+                        if ii >= 0:
+                            mspec1.mask[ii] = True
+                    for ii in range(sl.stop+1, sl.stop+grow+1):
+                        if ii < len(mspec1):
+                            mspec1.mask[ii] = True
+            # stop rejection process when min_points is reached
+            # [opt] [not in IRAF]
+            if np.ma.count(mspec1) < min_points:
+                if verbose:
+                    print("  min_points %d reached" % min_points)
+                break
+            mspec = mspec1
+            if function == 'polynomial':
+                coeff = np.polyfit(wav[~mspec.mask], spec[~mspec.mask], order)
+                cont = np.poly1d(coeff)(wav)
+            elif function == 'spline3':
+                knots = wav[0] + np.arange(order+1)[1:]*((wav[-1]-wav[0])/(order+1))
+                spl = sint.splrep(wav[~mspec.mask], spec[~mspec.mask], k=3, t=knots)
+                cont = sint.splev(wav, spl)
+            else:
+                raise(AttributeError)
+    # compute residual and rms
+    res = fspec-cont
+    sigm = np.std(res[~mspec.mask])
+    if verbose:
+        print("  nfit=%d/%d" %  (np.ma.count(mspec), len(mspec)))
+        print("  fit rms=%.3e" %  sigm)
+    # compute residual and rms between original spectrum and model
+    # different from above when median filtering is applied
+    ores = spec-cont
+    osigm = np.std(ores[~mspec.mask])
+    if int(med_filt) and verbose:
+        print("  unfiltered rms=%.3e" %  osigm)
+    # plot fit results
+    if plot_fit:
+        # overplot spectrum and model + mark rejected points
+        fig1 = pl.figure(1)
+        ax1 = fig1.add_subplot(111)
+        ax1.plot(wav[~mspec.mask], spec[~mspec.mask],
+            c='tab:blue', lw=1.0)
+        # overplot median filtered spectrum
+        if int(med_filt):
+            ax1.plot(wav[~mspec.mask], fspec[~mspec.mask],
+                c='tab:cyan', lw=1.0)
+        ax1.scatter(wav[mspec.mask], spec[mspec.mask], s=20., marker='d',
+        edgecolors='tab:gray', facecolors='none', lw=0.5)
+        ax1.plot(wav, cont, ls='--', c='tab:orange')
+        if nit > 0:
+            # plot residuals and rejection thresholds
+            fig2 = pl.figure(2)
+            ax2 = fig2.add_subplot(111)
+            ax2.axhline(0., ls='--', c='tab:orange', lw=1.)
+            ax2.axhline(-rej_low*sigm, ls=':')
+            ax2.axhline(rej_high*sigm, ls=':')
+            ax2.scatter(wav[mspec.mask], res[mspec.mask],
+                s=20., marker='d', edgecolors='tab:gray', facecolors='none',
+                lw=0.5)
+            ax2.scatter(wav[~mspec.mask], ores[~mspec.mask],
+                marker='o', s=10., edgecolors='tab:blue', facecolors='none',
+                lw=.5)
+            # overplot median filtered spectrum
+            if int(med_filt):
+                ax2.scatter(wav[~mspec.mask], res[~mspec.mask],
+                    marker='s', s=5., edgecolors='tab:cyan', facecolors='none',
+                    lw=.2)
+        pl.show()
+    return cont
