@@ -269,8 +269,8 @@ def load_data(p, polardict, loc):
             loc['BLAZEDATA'][keystr] = np.empty(data_shape) * np.nan
             loc['TELLURICDATA'][keystr] = np.empty(data_shape) * np.nan
 
-            # remove tellurics if possible and if 'IC_POLAR_REMOVE_TELLURICS' parameter is set to "True"
-            if entry["TELLURIC_REDUC_FILENAME"] != "" and p['IC_POLAR_REMOVE_TELLURICS'] :
+            # remove tellurics if possible and if 'IC_POLAR_USE_TELLURIC_CORRECTED_FLUX' parameter is set to "True"
+            if entry["TELLURIC_REDUC_FILENAME"] != "" and p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'] :
                 telluric_spectrum = load_spirou_AB_efits_spectrum(entry["TELLURIC_REDUC_FILENAME"], nan_pos_filter=False)['Recon']
         
             for order_num in range(len(wave_data)) :
@@ -292,8 +292,8 @@ def load_data(p, polardict, loc):
                     loc['FLUXDATA'][keystr][order_num][wlmask] = interpolate.splev(loc['WAVE'][order_num][wlmask], tck, der=0) / loc['BLAZEDATA'][keystr][order_num][wlmask]
                     loc['FLUXERRDATA'][keystr][order_num][wlmask] = np.sqrt(loc['FLUXDATA'][keystr][order_num][wlmask] / loc['BLAZEDATA'][keystr][order_num][wlmask] )
                 
-                    # remove tellurics if possible and if 'IC_POLAR_REMOVE_TELLURICS' parameter is set to "True"
-                    if entry["TELLURIC_REDUC_FILENAME"] != "" and p['IC_POLAR_REMOVE_TELLURICS'] :
+                    # remove tellurics if possible and if 'IC_POLAR_USE_TELLURIC_CORRECTED_FLUX' parameter is set to "True"
+                    if entry["TELLURIC_REDUC_FILENAME"] != "" and p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'] :
                         
                         # clean telluric nans
                         clean &= ~np.isnan(telluric_spectrum[order_num])
@@ -344,10 +344,10 @@ def calculate_polar_times(p, polardict, loc) :
         
         :param p: parameter dictionary, ParamDict containing constants
         
-        :param loc: parameter dictionary, ParamDict containing data
-        
         :param polardict: dictionary, ParamDict containing information on the
         input data
+
+        :param loc: parameter dictionary, ParamDict containing data
     """
     
     mjd_first, mjd_last = 0.0, 0.0
@@ -355,6 +355,8 @@ def calculate_polar_times(p, polardict, loc) :
     bjd_first, bjd_last, exptime_last = 0.0, 0.0, 0.0
     berv_first, berv_last = 0.0, 0.0
     bervmaxs = []
+    
+    mid_mjds, mid_bjds, mean_fluxes = [],[],[]
     
     # loop over files in polar sequence
     for filename in polardict.keys():
@@ -379,14 +381,36 @@ def calculate_polar_times(p, polardict, loc) :
         # append BERVMAX value of each exposure
         bervmaxs.append(float(hdr1['BERVMAX']))
 
+        # calculate mjd at middle of exposure
+        mid_mjds.append(float(hdr0['MJDATE']) + float(hdr0['EXPTIME'])/(2.*86400.))
+            
+        # calculate bjd at middle of exposure
+        mid_bjds.append(float(hdr1['BJD']) + float(hdr0['EXPTIME'])/(2.*86400.))
+            
+        # calculate mean A+B flux
+        meanflux = np.nanmean(loc['RAWFLUXDATA']['A_{0}'.format(expnum)] + loc['RAWFLUXDATA']['B_{0}'.format(expnum)])
+        # append mean A+B flux to the array
+        mean_fluxes.append(meanflux)
+
     # add elapsed time parameter keyword to header
     elapsed_time = (bjd_last - bjd_first) * 86400. + exptime_last
     loc['ELAPSED_TIME'] = elapsed_time
 
+    # cast arrays to numpy arrays
+    mid_mjds, mid_bjds = np.array(mid_mjds), np.array(mid_bjds)
+    mean_fluxes = np.array(mean_fluxes)
+    
+    # calculate flux-weighted mjd of polarimetric sequence
+    mjdfwcen = np.sum(mean_fluxes * mid_mjds) / np.sum(mean_fluxes)
+    loc['MJDFWCEN'] = mjdfwcen
+    
+    # calculate flux-weighted bjd of polarimetric sequence
+    bjdfwcen = np.sum(mean_fluxes * mid_bjds) / np.sum(mean_fluxes)
+    loc['BJDFWCEN'] = bjdfwcen
+    
     # calculate MJD at center of polarimetric sequence
     mjdcen = mjd_first + (mjd_last - mjd_first + exptime_last/86400.)/2.0
     loc['MJDCEN'] = mjdcen
-
     # calculate BJD at center of polarimetric sequence
     bjdcen = bjd_first + (bjd_last - bjd_first + exptime_last/86400.)/2.0
     loc['BJDCEN'] = bjdcen
@@ -1874,6 +1898,8 @@ def polar_header(p, loc, hdr):
     hdr.set('ELAPSED_TIME', loc['ELAPSED_TIME'], 'Total elapsed time (s)')
     hdr.set('MJDCEN', loc['MJDCEN'], 'MJD at center of 4 exposures')
     hdr.set('BJDCEN', loc['BJDCEN'], 'BJD at center of 4 exposures')
+    hdr.set('MJDFWCEN', loc['MJDFWCEN'], 'MJD at flux-weighted center of 4 exposures')
+    hdr.set('BJDFWCEN', loc['BJDFWCEN'], 'BJD at flux-weighted center of 4 exposures')
     hdr.set('BERVCEN', loc['BERVCEN'], 'BERV at center of 4 exposures')
     hdr.set('BERVMAX', loc['BERVMAX'], 'Maximum BERV value')
     hdr.set('MEANBJD', loc['MEANBJD'], 'Mean BJD of 4 exposures')

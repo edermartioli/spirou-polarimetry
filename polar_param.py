@@ -7,7 +7,7 @@ def load_polar_parameters() :
     p = {}
     
     # Whether or not to use telluric subctracted flux
-    p['IC_POLAR_REMOVE_TELLURICS'] = True
+    p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'] = True
 
     # Wheter or not to correct for BERV shift before calculate polarimetry
     p['IC_POLAR_BERV_CORRECT'] = True
@@ -94,6 +94,9 @@ def load_polar_parameters() :
     #  Define maximum lande of lines to be used in the LSD analyis        - [pol_spirou]
     p['IC_POLAR_LSD_MAX_LANDE'] = 10.
 
+    # Renormalize data before LSD analysis
+    p['IC_POLAR_LSD_NORMALIZE'] = False
+    
     # Renormalize data before LSD analysis
     p['IC_POLAR_LSD_NORMALIZE'] = False
     
