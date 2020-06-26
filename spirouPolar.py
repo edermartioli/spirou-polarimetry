@@ -784,7 +784,7 @@ def polarimetry_ratio_method(p, loc):
         # STEP 4 - calculate the quantity R
         #          (Part of Eq #24 on page 998 of Bagnulo et al. 2009)
         # -----------------------------------------------------------------
-        rr = (r1 * r2) ** (1.0 / nexp)
+        rr = (r1 * r2) ** (1.0 / (2*nexp))
         # -----------------------------------------------------------------
         # STEP 5 - calculate the degree of polarization
         #          (Eq #24 on page 998 of Bagnulo et al. 2009)
@@ -794,7 +794,7 @@ def polarimetry_ratio_method(p, loc):
         # STEP 6 - calculate the quantity RN1
         #          (Part of Eq #25-26 on page 998 of Bagnulo et al. 2009)
         # -----------------------------------------------------------------
-        rn1 = (r1 / r2) ** (1.0 / nexp)
+        rn1 = (r1 / r2) ** (1.0 / (2*nexp))
         # -----------------------------------------------------------------
         # STEP 7 - calculate the first NULL spectrum
         #          (Eq #25-26 on page 998 of Bagnulo et al. 2009)
@@ -805,7 +805,7 @@ def polarimetry_ratio_method(p, loc):
         #          (Part of Eq #25-26 on page 998 of Bagnulo et al. 2009),
         #          with exposure 2 and 4 swapped
         # -----------------------------------------------------------------
-        rn2 = (r1s / r2s) ** (1.0 / nexp)
+        rn2 = (r1s / r2s) ** (1.0 / (2*nexp))
         # -----------------------------------------------------------------
         # STEP 9 - calculate the second NULL spectrum
         #          (Eq #25-26 on page 998 of Bagnulo et al. 2009),
@@ -836,7 +836,7 @@ def polarimetry_ratio_method(p, loc):
         # STEP 4 - calculate the quantity R
         #          (Part of Eq #24 on page 998 of Bagnulo et al. 2009)
         # -----------------------------------------------------------------
-        rr = r1 ** (1.0 / nexp)
+        rr = r1 ** (1.0 / (2*nexp))
 
         # -----------------------------------------------------------------
         # STEP 5 - calculate the degree of polarization
