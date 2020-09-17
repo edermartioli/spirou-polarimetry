@@ -1732,7 +1732,7 @@ def clean_polarimetry_data(loc, sigclip=False, nsig=3, overwrite=False):
 
 def save_pol_le_format(output, loc) :
     # The columns of LE .s format are the following
-    # wavelength, I/Ic, V/Ic, Null1/Ic, Null2/Ic
+    # wavelength, I/Ic, V/Ic, Null1/Ic, Null2/Ic, Verr/Ic
     # e.g. 369.7156  2.8760e-01  3.0819e-02 -2.4229e-02  2.7975e-02  3.0383e-02
 
     loc = clean_polarimetry_data(loc)
@@ -1745,7 +1745,7 @@ def save_pol_le_format(output, loc) :
         null1, null2 = loc['CLEAN_NULL1'][i], loc['CLEAN_NULL2'][i]
         stokesI = loc['CLEAN_STOKESI'][i]
 
-        data_string += "{0:.4f} {1:.4e} {2:.4e} {3:.4e} {4:.4e} {5:.4e}\n".format(wl, stokesI, pol, polerr, null1, null2)
+        data_string += "{0:.4f} {1:.4e} {2:.4e} {3:.4e} {4:.4e} {5:.4e}\n".format(wl, stokesI, pol, null1, null2, polerr)
 
     out_string = "***Reduced spectrum of '{0}'\n".format(loc['OBJECT'])
     out_string += "{0} 5\n".format(len(loc['CLEAN_POL']))
