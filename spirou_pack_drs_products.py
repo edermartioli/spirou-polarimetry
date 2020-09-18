@@ -342,11 +342,11 @@ for i in range(len(inputABdata)) :
     efiles, tfiles = set_filenames(inputABdata[i],options.blaze)
     
     if options.verbose :
-        print("Creating file {0}/{1}: {2} ".format(i,en(inputABdata),efiles["output"]))
+        print("Creating file {0}/{1}: {2} ".format(i,len(inputABdata),efiles["output"]))
     
     save_e_fits(efiles)
 
     if options.verbose :
-        print("Creating file{0}/{1}: {2} ".format(i,en(inputABdata),tfiles["output"]))
+        print("Creating file{0}/{1}: {2} ".format(i,len(inputABdata),tfiles["output"]))
 
     save_t_fits(tfiles)
