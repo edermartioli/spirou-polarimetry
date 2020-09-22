@@ -52,14 +52,19 @@ loc = {}
 # define polarimetry parameters
 p = polar_param.load_polar_parameters()
 
-# set lsd mask file
-loc['LSD_MASK_FILE'] = options.lsdmask
-
 # set input polarimetry file
 loc['POL_FITS_FILE'] = options.input
 
 # load files
 loc = spirouPolar.load_pol_fits(options.input, loc)
+
+# select LSD mask file
+if options.lsdmask != "" :
+    # set lsd mask file from input
+    loc['LSD_MASK_FILE'] = options.lsdmask
+else :
+    # select an lsd mask file from repositories
+    loc['LSD_MASK_FILE'] = spirouLSD.select_lsd_mask(p)
 
 # ------------------------------------------------------------------
 # Run LSD Analysis

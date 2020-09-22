@@ -10,7 +10,7 @@
     
     Simple usage example:
     
-    python /Users/eder/spirou-tools/spirou-polarimetry/spirou_pol_pipeline.py --epattern=*e.fits --spirou_pol_dir=/Users/eder/spirou-tools/spirou-polarimetry/ --lsdmask=/Users/eder/spirou-tools/spirou-polarimetry/lsd_masks/marcs_t3500g50_all
+    python /Users/eder/spirou-tools/spirou-polarimetry/spirou_pol_pipeline.py --epattern=*e.fits --spirou_pol_dir=/Users/eder/spirou-tools/spirou-polarimetry/ -L
     
     """
 
@@ -142,14 +142,13 @@ def generate_polar_continuous_sets(polar_sets, verbose=False) :
             print(key,"->",cont_polar_sets[key])
 
     return cont_polar_sets
-    
 
 
 parser = OptionParser()
 parser.add_option("-e", "--epattern", dest="epattern", help="Spectral e.fits data pattern",type='string',default="*e.fits")
 parser.add_option("-d", "--spirou_pol_dir", dest="spirou_pol_dir", help="spirou_pol.py directory",type='string',default="")
-parser.add_option("-m", "--lsdmask", dest="lsdmask", help="LSD mask",type='string', default="")
 parser.add_option("-c", action="store_true", dest="contset", help="Produce continuous set", default=False)
+parser.add_option("-L", action="store_true", dest="run_lsd", help="Run LSD analysis", default=False)
 parser.add_option("-v", action="store_true", dest="verbose", help="verbose", default=False)
 
 try:
@@ -176,12 +175,16 @@ if options.contset :
 for key in polar_sets.keys() :
     
     output_pol = str(key).replace("e.fits","_pol.fits")
-    output_lsd = str(key).replace("e.fits","_lsd.fits")
-
+    
     seq = polar_sets[key]
 
-    command = "python {0}spirou_pol.py --exp1={1} --exp2={2} --exp3={3} --exp4={4} --lsdmask={5} --output={6} --output_lsd={7} -L".format(options.spirou_pol_dir,seq[0],seq[1],seq[2],seq[3],options.lsdmask, output_pol,output_lsd)
+    if options.run_lsd :
+        output_lsd = str(key).replace("e.fits","_lsd.fits")
     
+        command = "python {0}spirou_pol.py --exp1={1} --exp2={2} --exp3={3} --exp4={4} --lsdmask={5} --output={6} --output_lsd={7} -L".format(options.spirou_pol_dir,seq[0],seq[1],seq[2],seq[3],options.lsdmask, output_pol,output_lsd)
+    else :
+        command = "python {0}spirou_pol.py --exp1={1} --exp2={2} --exp3={3} --exp4={4} --output={5}".format(options.spirou_pol_dir,seq[0],seq[1],seq[2],seq[3], output_pol)
+
     print("Running: ",command)
-    os.system(command)
+    #os.system(command)
 

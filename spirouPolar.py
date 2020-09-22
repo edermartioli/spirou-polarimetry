@@ -229,6 +229,10 @@ def load_data(p, polardict, loc):
             loc['OBJECT'] = hdr['OBJECT']
             loc['HEADER0'] = hdu[0].header
             loc['HEADER1'] = hdu[1].header
+            if 'OBJTEMP' in loc['HEADER0'].keys() :
+                p['OBJTEMP'] = loc['HEADER0']['OBJTEMP']
+            elif 'OBJTEMP' in loc['HEADER1'].keys() :
+                p['OBJTEMP'] = loc['HEADER1']['OBJTEMP']
 
         for fiber in polarfibers:
             # set fiber+exposure key string
@@ -357,6 +361,7 @@ def calculate_polar_times(p, polardict, loc) :
     
     mjd_first, mjd_last = 0.0, 0.0
     meanbjd, tot_exptime = 0.0, 0.0
+    meanberv = 0.
     bjd_first, bjd_last, exptime_last = 0.0, 0.0, 0.0
     berv_first, berv_last = 0.0, 0.0
     bervmaxs = []
@@ -424,7 +429,7 @@ def calculate_polar_times(p, polardict, loc) :
     berv_slope = (berv_last - berv_first) / (bjd_last - bjd_first)
     berv_intercept = berv_first - berv_slope * bjd_first
     loc['BERVCEN'] = berv_intercept + berv_slope * bjdcen
-
+    loc['MEANBERV'] = meanberv / loc['NEXPOSURES']
     # calculate maximum bervmax
     bervmax = np.max(bervmaxs)
     loc['BERVMAX'] = bervmax
@@ -432,6 +437,7 @@ def calculate_polar_times(p, polardict, loc) :
     # add mean BJD
     meanbjd = meanbjd / loc['NEXPOSURES']
     loc['MEANBJD'] = meanbjd
+    
     
     return loc
 
@@ -1935,6 +1941,7 @@ def polar_header(p, loc, hdr):
     hdr.set('MJDFWCEN', loc['MJDFWCEN'], 'MJD at flux-weighted center of 4 exposures')
     hdr.set('BJDFWCEN', loc['BJDFWCEN'], 'BJD at flux-weighted center of 4 exposures')
     hdr.set('BERVCEN', loc['BERVCEN'], 'BERV at center of 4 exposures')
+    hdr.set('MEANBERV', loc['MEANBERV'], 'Mean BERV of 4 exposures')
     hdr.set('BERVMAX', loc['BERVMAX'], 'Maximum BERV value')
     hdr.set('MEANBJD', loc['MEANBJD'], 'Mean BJD of 4 exposures')
     

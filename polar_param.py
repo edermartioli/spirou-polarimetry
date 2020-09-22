@@ -54,9 +54,10 @@ def load_polar_parameters() :
     #  Remove edges of LSD profile                 - [pol_spirou]
     p['IC_POLAR_LSD_REMOVE_EDGES'] = True
     
-    #  Define files with spectral lines for LSD analysis              - [pol_spirou]
-    # noinspection PyPep8
-    #p['IC_POLAR_LSD_CCFLINES'] = ['marcs_t2500g50_atom', 'marcs_t3000g50_atom', 'marcs_t3500g50_atom', 'marcs_t5000g50_atom']
+    #  Define repositories of line masks for LSD analysis              - [pol_spirou]
+    p['IC_POLAR_LSD_MASKS_REPOSITORIES'] = ['lsd_masks/marcs*_all']
+    # Below is an example on how to include more than one repository
+    #p['IC_POLAR_LSD_MASKS_REPOSITORIES'] = ['lsd_masks/*_all', 'lsd_masks/20200304-mask_nIR_EMS/masks/min-depth-0_01/t*00_g4.0_m0.00']
 
     #  If mask lines are in air-wavelength then they will have to be converted from air to vaccuum:
     p['IC_POLAR_LSD_CCFLINES_AIR_WAVE'] = False

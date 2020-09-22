@@ -16,6 +16,8 @@ import os
 from copy import copy, deepcopy
 import matplotlib.pyplot as plt
 
+import glob
+
 import astropy.io.fits as fits
 import spirouPolar
 
@@ -123,10 +125,11 @@ def load_lsd_spectral_lines(p, loc):
         excpotf, flagf = None, None
 
     loc["NUMBER_OF_LINES_IN_MASK"] = len(wlcf)
-    #print("Number of lines in the original mask = ", len(wlcf))
+    print("Number of lines in the original mask = ", len(wlcf))
 
     # initialize data vectors
     wlc, zn, depth, lande = [], [], [], []
+    excpot, flag = [], []
 
     # mask to use only lines with flag=1.
     flagmask = np.where(flagf == 1)
@@ -140,6 +143,8 @@ def load_lsd_spectral_lines(p, loc):
         zn = np.append(zn, znf[flagmask][mask])
         depth = np.append(depth, depthf[flagmask][mask])
         lande = np.append(lande, landef[flagmask][mask])
+        excpot = np.append(excpot, excpotf[flagmask][mask])
+        flag = np.append(flag, flagf[flagmask][mask])
 
     # PS. Below it applies a line depth mask, however the cut in line depth
     # should be done according to the SNR. This will be studied and implemented
@@ -149,6 +154,7 @@ def load_lsd_spectral_lines(p, loc):
     gmask = np.where(np.logical_and(lande > p['IC_POLAR_LSD_MIN_LANDE'], lande < p['IC_POLAR_LSD_MAX_LANDE']))
     # apply mask to the data
     wlc, zn, depth, lande = wlc[gmask], zn[gmask], depth[gmask], lande[gmask]
+    excpot, flag = excpot[gmask], flag[gmask]
 
     if p['IC_POLAR_LSD_CCFLINES_AIR_WAVE'] :
         wlc = spirouPolar.convert_air_to_vacuum_wl(wlc)
@@ -157,9 +163,10 @@ def load_lsd_spectral_lines(p, loc):
     dmask = np.where(depth > p['IC_POLAR_LSD_MIN_LINEDEPTH'])
     # apply mask to the data
     wlc, zn, depth, lande = wlc[dmask], zn[dmask], depth[dmask], lande[dmask]
+    excpot, flag = excpot[dmask], flag[dmask]
 
     loc["NUMBER_OF_LINES_USED"] = len(wlc)
-    #print("Number of lines after filtering = ", len(wlc))
+    print("Number of lines after filtering = ", len(wlc))
 
     loc["MEAN_WAVE_OF_LINES"] = np.nanmean(wlc)
     loc["MEAN_LANDE_OF_LINES"] = np.nanmean(lande)
@@ -174,6 +181,10 @@ def load_lsd_spectral_lines(p, loc):
     loc['LSD_LINES_ZNUMBER'] = zn
     loc['LSD_LINES_DEPTH'] = depth
     loc['LSD_LINES_POL_WEIGHT'] = weight
+
+    loc['LSD_LINES_LANDE'] = lande
+    loc['LSD_LINES_POL_EXC_POTENTIAL'] = excpot
+    loc['LSD_LINES_POL_FLAG'] = flag
 
     return loc
 
@@ -785,3 +796,56 @@ def save_lsd_fits(filename, loc, p) :
     mef_hdu = fits.HDUList([primary_hdu, hdu_vels, hdu_pol, hdu_pol_err, hdu_flux, hdu_flux_err, hdu_fluxmodel, hdu_null, hdu_null_err])
 
     mef_hdu.writeto(filename, overwrite=True)
+
+
+def select_lsd_mask(p) :
+    """
+        Function to select a LSD mask file from a given list of
+        mask repositories that best match the object temperature.
+        
+        :param p: parameter dictionary,
+        Must contain at least:
+        p['OBJTEMP']: float, object effective temperature
+        p['IC_POLAR_LSD_MASKS_REPOSITORIES']: list, array of strings
+        containing paths to LSD mask repositories to search for masks
+        
+        return: string, file path for the LSD mask that best match Teff
+        """
+    
+    file_list = []
+    
+    for repo in p['IC_POLAR_LSD_MASKS_REPOSITORIES'] :
+        repo_full_path = os.path.dirname(__file__) + "/" + repo
+        file_list += glob.glob(repo_full_path)
+    
+    obj_Temperature = p['OBJTEMP']
+
+    #print("Selecting mask for Teff=",obj_Temperature)
+
+    mindiff = 1e20
+    selected_mask = os.path.dirname(__file__) + '/lsd_masks/marcs_t3000g50_all'
+
+    for filepath in file_list :
+        basename = os.path.basename(filepath)
+    
+        if basename[:5] == "marcs" :
+            #assuming the following format: marcs_t3000g50_all
+            mask_temp = float(basename[7:11])
+        elif basename[0] == 't':
+            #assuming the following format: t4000_g4.0_m0.00
+            mask_temp = float(basename[1:5])
+        else :
+            #print("WARNING: mask file {0} not recognized, skipping ...".format(basename))
+            continue
+
+        tdiff = np.abs(mask_temp - obj_Temperature)
+
+        #print("Mask file: {0} T={1}".format(basename,mask_temp))
+
+        if tdiff < mindiff :
+            selected_mask = filepath
+            mindiff = tdiff
+
+    #print("Selectect mask:", selected_mask)
+    
+    return selected_mask

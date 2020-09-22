@@ -20,9 +20,12 @@
     python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --output=2329699_pol.fits
     
     2.2) with LSD analysis
-    python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --lsdmask=$PATH/lsd_masks/marcs_t5000g50_all --output=2329699_pol.fits --output_lsd=2329699_lsd.fits -p -s -L
+    python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --output=2329699_pol.fits --output_lsd=2329699_lsd.fits -p -s -L
     
-    option -L activates LSD analysis but it also requires an input --lsdmask=$MASK
+    option -L activates LSD analysis
+    
+    option --lsdmask provides an specific mask for LSD analysis
+    e.g.: --lsdmask=$PATH/lsd_masks/marcs_t5000g50_all
     
     option -p activates plotting for polarimetry
     
@@ -135,11 +138,15 @@ elif options.output.endswith(".s") :
     spirouPolar.save_pol_le_format(options.output, loc)
 
 # ------------------------------------------------------------------
-if options.lsd and options.lsdmask != "":
+if options.lsd :
     
-    # set lsd mask file
-    loc['LSD_MASK_FILE'] = options.lsdmask
-    
+    if options.lsdmask != "" :
+        # set lsd mask file from input
+        loc['LSD_MASK_FILE'] = options.lsdmask
+    else :
+        # select an lsd mask file from repositories
+        loc['LSD_MASK_FILE'] = spirouLSD.select_lsd_mask(p)
+
     # ------------------------------------------------------------------
     # LSD Analysis
     # ------------------------------------------------------------------
