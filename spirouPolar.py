@@ -113,6 +113,8 @@ def sort_polar_files(p):
             cmmtseq = hdr['CMMTSEQ'].split(" ")
             stokes, exposure = cmmtseq[0], int(cmmtseq[2][0])
             expstatus = True
+            if exposure == 1 :
+                p["BASE_EXPOSURE"] = filename
         else:
             exposure += 1
             wmsg = 'File {0} has empty key="CMMTSEQ", setting Stokes={1} Exposure={2}'
@@ -205,7 +207,8 @@ def load_data(p, polardict, loc):
     loc['FLUXDATA'], loc['FLUXERRDATA'] = {}, {}
     loc['WAVEDATA'], loc['BLAZEDATA'] = {}, {}
     loc['TELLURICDATA'] = {}
-    
+
+    exp_count = 0
     # loop around the filenames in polardict
     for filename in polardict.keys():
         
@@ -219,16 +222,21 @@ def load_data(p, polardict, loc):
         exposure = entry['exposure']
         
         # save basename, wavelength, and object name for 1st exposure:
-        if (exposure == 1) :
-            loc['BASENAME'] = entry['basename']
-            waveAB = deepcopy(hdu["WaveAB"].data)
+        if (exp_count == 0) :
+            loc['BASENAME'] = p['BASE_EXPOSURE']
+            # load SPIRou spectrum
+            hdu_base = fits.open(loc['BASENAME'])
+            hdr_base = hdu_base[0].header
+            # get this entry
+            entry_base = polardict[loc['BASENAME']]
+            waveAB = deepcopy(hdu_base["WaveAB"].data)
             if p['IC_POLAR_BERV_CORRECT'] :
-                rv_corr = 1.0 + (entry['BERV'] - entry['SOURCE_RV']) / (constants.c / 1000.)
+                rv_corr = 1.0 + (entry_base['BERV'] - entry_base['SOURCE_RV']) / (constants.c / 1000.)
                 waveAB *= rv_corr
             loc['WAVE'] = waveAB
-            loc['OBJECT'] = hdr['OBJECT']
-            loc['HEADER0'] = hdu[0].header
-            loc['HEADER1'] = hdu[1].header
+            loc['OBJECT'] = hdr_base['OBJECT']
+            loc['HEADER0'] = hdu_base[0].header
+            loc['HEADER1'] = hdu_base[1].header
             if 'OBJTEMP' in loc['HEADER0'].keys() :
                 p['OBJTEMP'] = loc['HEADER0']['OBJTEMP']
             elif 'OBJTEMP' in loc['HEADER1'].keys() :
@@ -324,6 +332,8 @@ def load_data(p, polardict, loc):
             if cond1 and cond2:
                 four_exposures_detected.append(keystr)
 
+        exp_count += 1
+            
     # initialize number of exposures to zero
     n_exposures = 0
     # now find out whether there is enough exposures
