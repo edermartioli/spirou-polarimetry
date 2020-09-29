@@ -320,7 +320,7 @@ def check_files_exist(files, verbose=False) :
         Description: function to check if either t- or e-files exist
         return: True if all files exist or False otherwise
         """
-    for key in efiles.keys() :
+    for key in files.keys() :
         if os.path.exists(files[key]) or key=='output':
             continue
         else :
@@ -363,5 +363,5 @@ for i in range(len(inputABdata)) :
 
     if check_files_exist(tfiles, options.verbose) :
         if options.verbose :
-            print("Creating file{0}/{1}: {2} ".format(i,len(inputABdata),tfiles["output"]))
+            print("Creating file {0}/{1}: {2} ".format(i,len(inputABdata),tfiles["output"]))
         save_t_fits(tfiles)
