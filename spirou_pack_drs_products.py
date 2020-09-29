@@ -315,6 +315,21 @@ def save_t_fits(tfiles) :
     return tfiles['output']
 
 
+def check_files_exist(files, verbose=False) :
+    """
+        Description: function to check if either t- or e-files exist
+        return: True if all files exist or False otherwise
+        """
+    for key in efiles.keys() :
+        if os.path.exists(files[key]) or key=='output':
+            continue
+        else :
+            if verbose :
+                print("File",files[key]," does not exists, skipping sequence ...")
+            return False
+    return True
+
+
 parser = OptionParser()
 parser.add_option("-i", "--inputABpattern", dest="inputABpattern", help="Spectral e2ds AB flux data pattern",type='string',default="*o_pp_e2dsff_AB.fits")
 parser.add_option("-b", "--blaze", dest="blaze", help="e2ds blaze data root name",type='string',default="")
@@ -341,12 +356,12 @@ for i in range(len(inputABdata)) :
     
     efiles, tfiles = set_filenames(inputABdata[i],options.blaze)
     
-    if options.verbose :
-        print("Creating file {0}/{1}: {2} ".format(i,len(inputABdata),efiles["output"]))
-    
-    save_e_fits(efiles)
+    if check_files_exist(efiles, options.verbose) :
+        if options.verbose :
+            print("Creating file {0}/{1}: {2} ".format(i,len(inputABdata),efiles["output"]))
+        save_e_fits(efiles)
 
-    if options.verbose :
-        print("Creating file{0}/{1}: {2} ".format(i,len(inputABdata),tfiles["output"]))
-
-    save_t_fits(tfiles)
+    if check_files_exist(tfiles, options.verbose) :
+        if options.verbose :
+            print("Creating file{0}/{1}: {2} ".format(i,len(inputABdata),tfiles["output"]))
+        save_t_fits(tfiles)
