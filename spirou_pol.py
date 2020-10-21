@@ -17,10 +17,10 @@
     2) output FITS SPIRou DRS style:
     
     2.1) without LSD analysis
-    python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --output=2329699_pol.fits
+    python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --output=2329699p.fits
     
     2.2) with LSD analysis
-    python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --output=2329699_pol.fits --output_lsd=2329699_lsd.fits -p -s -L
+    python $PATH/spirou_pol.py --exp1=2329699e.fits --exp2=2329700e.fits --exp3=2329701e.fits --exp4=2329702e.fits --output=2329699p.fits --output_lsd=2329699_lsd.fits -p -s -L
     
     option -L activates LSD analysis
     
@@ -44,6 +44,8 @@ import os,sys
 
 import spirouPolar, polar_param
 import spirouLSD
+
+import spirou_packager
 
 parser = OptionParser()
 parser.add_option("-1", "--exp1", dest="exp1", help="Input exposure 1",type='string',default="")
@@ -133,7 +135,9 @@ if options.plot :
     spirouPolar.polar_stokes_i_plot(p, loc)
 
 if options.output.endswith(".fits") :
-    spirouPolar.save_pol_fits(options.output, p, loc)
+    #spirouPolar.save_pol_fits(options.output, p, loc) # old products
+    spirou_packager.create_pol_product(options.output, p, loc)
+
 elif options.output.endswith(".s") :
     spirouPolar.save_pol_le_format(options.output, loc)
 

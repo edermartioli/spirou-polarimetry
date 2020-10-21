@@ -93,7 +93,7 @@ def load_polar_parameters() :
     # If False it will use a cubic interpolation instead of polynomial fit
     p['IC_POLAR_CONT_POLYNOMIAL_FIT'] = True
     #  Define degree of polynomial to fit continuum polarization      - [pol_spirou]
-    p['IC_POLAR_CONT_DEG_POLYNOMIAL'] = 2
+    p['IC_POLAR_CONT_DEG_POLYNOMIAL'] = 3
     #  Define the polarimetry continuum bin size                       - [pol_spirou]
     p['IC_POLAR_CONT_BINSIZE'] = 900
     #  Define the polarimetry continuum overlap size                   - [pol_spirou]
@@ -105,11 +105,14 @@ def load_polar_parameters() :
     
     #### Parameters below are for 'IRAF' algorithm :
     #function to fit to the polar continuum: must be 'polynomial' or 'spline3'
-    p['IC_POLAR_IRAF_CONT_FIT_FUNCTION'] = "polynomial"
+    if p['IC_POLAR_CONT_POLYNOMIAL_FIT'] :
+        p['IC_POLAR_IRAF_CONT_FIT_FUNCTION'] = "polynomial"
+    else :
+        p['IC_POLAR_IRAF_CONT_FIT_FUNCTION'] = "spline3"
     #function to fit to the stokes I continuum: must be 'polynomial' or 'spline3'
     p['IC_STOKESI_IRAF_CONT_FIT_FUNCTION'] = "polynomial"
     # polar continuum fit function order: 'polynomial': degree or 'spline3': number of knots
-    p['IC_POLAR_IRAF_CONT_FUNCTION_ORDER'] = 3
+    p['IC_POLAR_IRAF_CONT_FUNCTION_ORDER'] = p['IC_POLAR_CONT_DEG_POLYNOMIAL']
     # stokes I continuum fit function order: 'polynomial': degree or 'spline3': number of knots
     p['IC_STOKESI_IRAF_CONT_FUNCTION_ORDER'] = 5
     # plot Polarimetry continuum calculation using IRAF algorithm

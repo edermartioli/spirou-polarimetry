@@ -350,6 +350,9 @@ def load_data(p, polardict, loc):
     # set the number of exposures detected
     loc['NEXPOSURES'] = n_exposures
 
+    # add polardict to loc
+    loc['POLARDICT'] = polardict
+
     # calculate time related quantities
     loc = calculate_polar_times(p, polardict, loc)
 
@@ -401,6 +404,9 @@ def calculate_polar_times(p, polardict, loc) :
         # append BERVMAX value of each exposure
         bervmaxs.append(float(hdr1['BERVMAX']))
 
+        # sum all BERV values
+        meanberv += hdr1['BERV']
+        
         # calculate mjd at middle of exposure
         mid_mjds.append(float(hdr0['MJDATE']) + float(hdr0['EXPTIME'])/(2.*86400.))
             
@@ -415,7 +421,10 @@ def calculate_polar_times(p, polardict, loc) :
     # add elapsed time parameter keyword to header
     elapsed_time = (bjd_last - bjd_first) * 86400. + exptime_last
     loc['ELAPSED_TIME'] = elapsed_time
-
+    
+    # save total exposure time
+    loc['TOTEXPTIME'] = tot_exptime
+    
     # cast arrays to numpy arrays
     mid_mjds, mid_bjds = np.array(mid_mjds), np.array(mid_bjds)
     mean_fluxes = np.array(mean_fluxes)
@@ -1934,7 +1943,7 @@ def save_pol_fits(filename, p, loc) :
 
 def polar_header(p, loc, hdr):
     """
-        Function to construct header keywords to be saved in the polar products
+        Function to add polarimetry keywords in the header of polar products
         
         :param p: parameter dictionary, ParamDict containing constants
         
@@ -1945,17 +1954,87 @@ def polar_header(p, loc, hdr):
         :return hdr: ParamDict, updated FITS header dictionary
     """
     
-    hdr.set('ELAPSED_TIME', loc['ELAPSED_TIME'], 'Total elapsed time (s)')
-    hdr.set('MJDCEN', loc['MJDCEN'], 'MJD at center of 4 exposures')
-    hdr.set('BJDCEN', loc['BJDCEN'], 'BJD at center of 4 exposures')
+    polardict = loc['POLARDICT']
+
+    
+    ########################
+    # keywords set as placeholder, but without meaning since it's run outside the DRS
+    ########################
+    hdr.set('DRS_EOUT', 'OBJ_FP  ', 'DRS Extraction input DPRTYPE')
+    #hdr.set('DRSPID', 'None', 'The process ID that outputted this file.')
+    hdr.set('WAVELOC', 'WaveAB', 'Where the wave solution was read from')
+    hdr.set('QCC', 1, 'All quality control passed')
+    hdr.set('QCC001N', 'None    ', 'Quality control variable name')
+    hdr.set('QCC001V', 'None    ', 'Qualtity control value')
+    hdr.set('QCC001L', 'None    ', 'Quality control logic')
+    hdr.set('QCC001P', 1, 'Quality control passed')
+    ########################
+
+    # loop over files in polar sequence to set *e.fits filenames into INF* keywords
+    for filename in polardict.keys():
+        # get expnum
+        expnum = polardict[filename]['exposure']
+        
+        # add keywords to inform which files have been used to create output
+        # The header of e.fits already has INF1*, so I have used INF2*, but not sure it's correct
+        infkey = "INF2{0:03d}".format(expnum)
+        hdr.set(infkey, filename, 'Input file used to create output file={}'.format(expnum))
+
+    ########################
+    # add polarimetry related keywords, as in previous version:
+    ########################
+    hdr.set('ELAPTIME', loc['ELAPSED_TIME'], 'Elapsed time of observation (sec)')
+    hdr.set('MJDCEN', loc['MJDCEN'], 'MJD at center of observation')
+    hdr.set('BJDCEN', loc['BJDCEN'], 'BJD at center of observation')
+    hdr.set('BERVCEN', loc['BERVCEN'], 'BERV at center of observation')
+    hdr.set('MEANBJD', loc['MEANBJD'], 'Mean BJD for polar sequence')
+    hdr.set('STOKES', loc['STOKES'], 'Stokes paremeter: Q, U, V, or I')
+    hdr.set('POLNEXP', loc['NEXPOSURES'], 'Number of exposures for polarimetry')
+    hdr.set('TOTETIME', loc['TOTEXPTIME'], 'Total exposure time (sec)')
+    hdr.set('POL_DEG', 'POL_DEG ', 'DRS output identification code')
+    hdr.set('POLMETHO', p['IC_POLAR_METHOD'], 'Polarimetry method')
+    ########################
+
+    ########################
+    # suggested new keywords, which have only been introduced in the new version of polarimetry
+    ########################
     hdr.set('MJDFWCEN', loc['MJDFWCEN'], 'MJD at flux-weighted center of 4 exposures')
     hdr.set('BJDFWCEN', loc['BJDFWCEN'], 'BJD at flux-weighted center of 4 exposures')
-    hdr.set('BERVCEN', loc['BERVCEN'], 'BERV at center of 4 exposures')
     hdr.set('MEANBERV', loc['MEANBERV'], 'Mean BERV of 4 exposures')
-    hdr.set('BERVMAX', loc['BERVMAX'], 'Maximum BERV value')
-    hdr.set('MEANBJD', loc['MEANBJD'], 'Mean BJD of 4 exposures')
-    
-    hdr.set('STOKES', loc['STOKES'], 'Stokes parameter')
+    hdr.set('TCORRFLX', p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'], 'Polarimetry used tellcorr flux')
+    hdr.set('CORRBERV', p['IC_POLAR_BERV_CORRECT'], 'BERV corrected before polarimetry')
+    hdr.set('CORRSRV', p['IC_POLAR_SOURCERV_CORRECT'], 'Source RV corrected before polarimetry')
+    hdr.set('NSTOKESI', p['IC_POLAR_NORMALIZE_STOKES_I'], 'Normalize Stokes I by continuum')
+    hdr.set('PINTERPF', p['IC_POLAR_INTERPOLATE_FLUX'], 'Interp flux to correct for shifts between exps')
+    hdr.set('PSIGCLIP', p['IC_POLAR_CLEAN_BY_SIGMA_CLIPPING'], 'Apply polarimetric sigma-clip cleaning')
+    hdr.set('PNSIGMA', p['IC_POLAR_NSIGMA_CLIPPING'], 'Number of sigmas of sigma-clip cleaning')
+    hdr.set('PREMCONT', p['IC_POLAR_REMOVE_CONTINUUM'], 'Remove continuum polarization')
+    hdr.set('PCONTAL', p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'], 'Polarization continuum detection algorithm')
+    hdr.set('SICONTAL', p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'], 'Stokes I continuum detection algorithm')
+    hdr.set('PCPOLFIT', p['IC_POLAR_CONT_POLYNOMIAL_FIT'], 'Use polynomial fit for continuum polarization')
+    hdr.set('PCPOLDEG', p['IC_POLAR_CONT_DEG_POLYNOMIAL'], 'Degree of polynomial to fit continuum polariz.')
+    hdr.set('SICFUNC', p['IC_STOKESI_IRAF_CONT_FIT_FUNCTION'], 'Function to fit Stokes I continuum')
+    hdr.set('SIPOLDEG', p['IC_STOKESI_IRAF_CONT_FUNCTION_ORDER'], 'Degree of polynomial to fit Stokes I continuum')
+    hdr.set('PCBINSIZ', p['IC_POLAR_CONT_BINSIZE'], 'Polarimetry continuum bin size')
+    hdr.set('PCOVERLA', p['IC_POLAR_CONT_OVERLAP'], 'Polarimetry continuum overlap size')
+    for i in range(len(p['IC_POLAR_CONT_TELLMASK'])):
+        hdr.set('PCEWL{0:03d}'.format(i),"{0},{1}".format(p['IC_POLAR_CONT_TELLMASK'][i][0],p['IC_POLAR_CONT_TELLMASK'][i][1]), 'Excluded wave range (nm) for cont detection {0}/{1}'.format(i,len(p['IC_POLAR_CONT_TELLMASK'])-1))
+    ###############
+
+    # loop over files in polar sequence to add keywords related to each exposure in sequence
+    for filename in polardict.keys():
+        # get expnum
+        expnum = polardict[filename]['exposure']
+        # get header
+        ehdr0 = fits.getheader(filename,0)
+        ehdr1 = fits.getheader(filename,1)
+
+        hdr.set("FILENAM{0:1d}".format(expnum), ehdr0['FILENAME'], 'Base filename of exposure {}'.format(expnum))
+        hdr.set("EXPTIME{0:1d}".format(expnum), ehdr0['EXPTIME'], 'EXPTIME of exposure {} (sec)'.format(expnum))
+        hdr.set("MJDATE{0:1d}".format(expnum), ehdr0['MJDATE'], 'MJD at start of exposure {}'.format(expnum))
+        hdr.set("MJDEND{0:1d}".format(expnum), ehdr0['MJDEND'], 'MJDEND at end of exposure {}'.format(expnum))
+        hdr.set("BJD{0:1d}".format(expnum), ehdr1['BJD'], 'BJD at start of exposure {}'.format(expnum))
+        hdr.set("BERV{0:1d}".format(expnum), ehdr1['BERV'], 'BERV at start of exposure {}'.format(expnum))
 
     return hdr
 
