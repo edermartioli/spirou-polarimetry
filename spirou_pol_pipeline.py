@@ -176,7 +176,7 @@ if options.contset :
 
 for key in polar_sets.keys() :
     
-    output_pol = str(key).replace("e.fits","_pol.fits")
+    output_pol = str(key).replace("e.fits","p.fits")
     
     seq = polar_sets[key]
     
