@@ -1978,7 +1978,7 @@ def polar_header(p, loc, hdr):
         # add keywords to inform which files have been used to create output
         # The header of e.fits already has INF1*, so I have used INF2*, but not sure it's correct
         infkey = "INF2{0:03d}".format(expnum)
-        hdr.set(infkey, filename, 'Input file used to create output file={}'.format(expnum))
+        hdr.set(infkey, os.path.basename(filename), 'Input file used to create output file={}'.format(expnum))
 
     ########################
     # add polarimetry related keywords, as in previous version:

@@ -8,9 +8,10 @@
     """
 
 import textwrap
-from typing import Any, Collection, Iterable, Tuple, Union
+from typing import Collection, Iterable, Union
 from astropy.io import fits
 import numpy as np
+from spirouPolar import polar_header
 
 ExtensionHDU = Union[fits.ImageHDU, fits.BinTableHDU]
 HDU = Union[fits.PrimaryHDU, ExtensionHDU]
@@ -32,52 +33,12 @@ def create_hdu_list(hdus: Collection[HDU]) -> fits.HDUList:
     return hdu_list
 
 
-def get_card(header: fits.Header, keyword: str) -> Tuple[str, Any, str]:
-    """
-        Retrieve a fits card from a fits header
-        :param header: The header
-        :param keyword: The keyword of the card
-        :return: The (keyword, value, comment) tuple of the card
-        """
-    return keyword, header[keyword], header.comments[keyword]
-
-
 def remove_keys(header: fits.Header, keys: Iterable[str]):
     """
     Removes any of the specified keys from a fits header, if present.
     :param header: The fits header to update
     :param keys: The keys to remove
     """
-    for key in keys:
-        header.remove(key, ignore_missing=True)
-
-
-def verify_duplicate_cards(header: fits.Header, cards: Iterable[Tuple[str, Any, str]]) -> Iterable[str]:
-    """
-        Searches through a fits header for expected header cards, and logs a warning for any which were not found.
-        :param header: The fits header to examine
-        :param cards: The cards expected to be found in the header
-        :return: The expected cards which were actually found in the header
-        """
-    dupe_keys = []
-    for card in cards:
-        key, value = card[0], card[1]  # Split up so it still works if len(card) is 3
-        if key in ('SIMPLE', 'EXTEND', 'NEXTEND'):
-            continue
-        if header.get(key) == value:
-            dupe_keys.append(key)
-        else:
-            extname = header.get('EXTNAME')
-            #print('WARNING: Header key {} expected to be duplicate in extension {} but was not'.format(key, extname))
-    return dupe_keys
-
-
-def remove_keys(header: fits.Header, keys: Iterable[str]):
-    """
-        Removes any of the specified keys from a fits header, if present.
-        :param header: The fits header to update
-        :param keys: The keys to remove
-        """
     for key in keys:
         header.remove(key, ignore_missing=True)
 
@@ -97,27 +58,13 @@ def product_header_update(hdu_list: fits.HDUList):
         return
     primary_header = hdu_list[0].header
     remove_keys(primary_header, ('BITPIX', 'NAXIS', 'NAXIS1', 'NAXIS2'))
-    try :
-        primary_header.insert('PVERSION', get_card(hdu_list[1].header, 'VERSION'), after=True)
-        primary_header.insert('DRSVDATE', get_card(hdu_list[1].header, 'DRSPDATE'), after=True)
-    except :
-        print("WARNING: could not get version")
-        primary_header['PVERSION'] = ""
-        primary_header['DRSVDATE'] = ""
+    primary_header.remove('COMMENT', ignore_missing=True, remove_all=True)
 
     ext_names = []
     for extension in hdu_list[1:]:
         ext_header = extension.header
         ext_name = ext_header['EXTNAME']
         ext_names.append(ext_name)
-        if ext_name == 'Pol':
-            pass
-            #primary_header['EXPTIME'] = (ext_header['EXPTIME'], '[sec] total integration time of 4 exposures')
-            #primary_header['MJDATE'] = (ext_header['MJDATE'], 'Modified Julian Date at middle of sequence')
-        if ext_name.startswith('Wave') or ext_name.startswith('Blaze') or ext_name.endswith('Err'):
-            continue
-        dupe_keys = verify_duplicate_cards(ext_header, primary_header.items())
-        remove_keys(ext_header, dupe_keys)
     description = 'This file contains the following extensions: ' + ', '.join(ext_names)
     for line in textwrap.wrap(description, 71):
         primary_header.insert('FILENAME', ('COMMENT', line))
@@ -131,6 +78,7 @@ def extension_from_hdu(ext_name: str, hdu: HDU) -> ExtensionHDU:
         :return: The updated HDU
         """
     if ext_name:
+        hdu.header.remove('EXTNAME', ignore_missing=True)
         extname_card = ('EXTNAME', ext_name)
         if 'XTENSION' in hdu.header:
             if 'TFIELDS' in hdu.header:
@@ -142,7 +90,7 @@ def extension_from_hdu(ext_name: str, hdu: HDU) -> ExtensionHDU:
     return hdu
 
 
-def make_2D_data_uniform(loc) :
+def make_2D_data_uniform(loc):
     """
         Takes all polarimetry data arrays in loc and make them uniform,
         i.e. with the same shape by filling voids with np.nans
@@ -196,102 +144,7 @@ def make_2D_data_uniform(loc) :
 
 
 def add_polar_keywords(p, loc, hdr):
-    """
-        Function to add polarimetry keywords in the header of polar products
-        
-        :param p: parameter dictionary, ParamDict containing constants
-        
-        :param loc: parameter dictionary, ParamDict containing data
-        
-        :param hdr: ParamDict, FITS header dictionary
-
-        :return hdr: ParamDict, updated FITS header dictionary
-    """
-    
-    polardict = loc['POLARDICT']
-
-    
-    ########################
-    # keywords set as placeholder, but without meaning since it's run outside the DRS
-    ########################
-    hdr.set('DRS_EOUT', 'OBJ_FP  ', 'DRS Extraction input DPRTYPE')
-    #hdr.set('DRSPID', 'None', 'The process ID that outputted this file.')
-    hdr.set('WAVELOC', 'WaveAB', 'Where the wave solution was read from')
-    hdr.set('QCC', 1, 'All quality control passed')
-    hdr.set('QCC001N', 'None    ', 'Quality control variable name')
-    hdr.set('QCC001V', 'None    ', 'Qualtity control value')
-    hdr.set('QCC001L', 'None    ', 'Quality control logic')
-    hdr.set('QCC001P', 1, 'Quality control passed')
-    ########################
-
-    # loop over files in polar sequence to set *e.fits filenames into INF* keywords
-    for filename in polardict.keys():
-        # get expnum
-        expnum = polardict[filename]['exposure']
-        
-        # add keywords to inform which files have been used to create output
-        # The header of e.fits already has INF1*, so I have used INF2*, but not sure it's correct
-        infkey = "INF2{0:03d}".format(expnum)
-        hdr.set(infkey, filename, 'Input file used to create output file={}'.format(expnum))
-
-    ########################
-    # add polarimetry related keywords, as in previous version:
-    ########################
-    hdr.set('ELAPTIME', loc['ELAPSED_TIME'], 'Elapsed time of observation (sec)')
-    hdr.set('MJDCEN', loc['MJDCEN'], 'MJD at center of observation')
-    hdr.set('BJDCEN', loc['BJDCEN'], 'BJD at center of observation')
-    hdr.set('BERVCEN', loc['BERVCEN'], 'BERV at center of observation')
-    hdr.set('MEANBJD', loc['MEANBJD'], 'Mean BJD for polar sequence')
-    hdr.set('STOKES', loc['STOKES'], 'Stokes paremeter: Q, U, V, or I')
-    hdr.set('POLNEXP', loc['NEXPOSURES'], 'Number of exposures for polarimetry')
-    hdr.set('TOTETIME', loc['TOTEXPTIME'], 'Total exposure time (sec)')
-    hdr.set('POL_DEG', 'POL_DEG ', 'DRS output identification code')
-    hdr.set('POLMETHO', p['IC_POLAR_METHOD'], 'Polarimetry method')
-    ########################
-
-    ########################
-    # suggested new keywords, which have only been introduced in the new version of polarimetry
-    ########################
-    hdr.set('MJDFWCEN', loc['MJDFWCEN'], 'MJD at flux-weighted center of 4 exposures')
-    hdr.set('BJDFWCEN', loc['BJDFWCEN'], 'BJD at flux-weighted center of 4 exposures')
-    hdr.set('MEANBERV', loc['MEANBERV'], 'Mean BERV of 4 exposures')
-    hdr.set('TCORRFLX', p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'], 'Polarimetry used tellcorr flux')
-    hdr.set('CORRBERV', p['IC_POLAR_BERV_CORRECT'], 'BERV corrected before polarimetry')
-    hdr.set('CORRSRV', p['IC_POLAR_SOURCERV_CORRECT'], 'Source RV corrected before polarimetry')
-    hdr.set('NSTOKESI', p['IC_POLAR_NORMALIZE_STOKES_I'], 'Normalize Stokes I by continuum')
-    hdr.set('PINTERPF', p['IC_POLAR_INTERPOLATE_FLUX'], 'Interp flux to correct for shifts between exps')
-    hdr.set('PSIGCLIP', p['IC_POLAR_CLEAN_BY_SIGMA_CLIPPING'], 'Apply polarimetric sigma-clip cleaning')
-    hdr.set('PNSIGMA', p['IC_POLAR_NSIGMA_CLIPPING'], 'Number of sigmas of sigma-clip cleaning')
-    hdr.set('PREMCONT', p['IC_POLAR_REMOVE_CONTINUUM'], 'Remove continuum polarization')
-    hdr.set('PCONTAL', p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'], 'Polarization continuum detection algorithm')
-    hdr.set('SICONTAL', p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'], 'Stokes I continuum detection algorithm')
-    hdr.set('PCPOLFIT', p['IC_POLAR_CONT_POLYNOMIAL_FIT'], 'Use polynomial fit for continuum polarization')
-    hdr.set('PCPOLDEG', p['IC_POLAR_CONT_DEG_POLYNOMIAL'], 'Degree of polynomial to fit continuum polariz.')
-    hdr.set('SICFUNC', p['IC_STOKESI_IRAF_CONT_FIT_FUNCTION'], 'Function to fit Stokes I continuum')
-    hdr.set('SIPOLDEG', p['IC_STOKESI_IRAF_CONT_FUNCTION_ORDER'], 'Degree of polynomial to fit Stokes I continuum')
-    hdr.set('PCBINSIZ', p['IC_POLAR_CONT_BINSIZE'], 'Polarimetry continuum bin size')
-    hdr.set('PCOVERLA', p['IC_POLAR_CONT_OVERLAP'], 'Polarimetry continuum overlap size')
-    for i in range(len(p['IC_POLAR_CONT_TELLMASK'])):
-        hdr.set('PCEWL{0:03d}'.format(i),"{0},{1}".format(p['IC_POLAR_CONT_TELLMASK'][i][0],p['IC_POLAR_CONT_TELLMASK'][i][1]), 'Excluded wave range (nm) for cont detection {0}/{1}'.format(i,len(p['IC_POLAR_CONT_TELLMASK'])-1))
-    ###############
-
-    # loop over files in polar sequence to add keywords related to each exposure in sequence
-    for filename in polardict.keys():
-        # get expnum
-        expnum = polardict[filename]['exposure']
-        # get header
-        ehdr0 = fits.getheader(filename,0)
-        ehdr1 = fits.getheader(filename,1)
-
-        hdr.set("FILENAM{0:1d}".format(expnum), ehdr0['FILENAME'], 'Base filename of exposure {}'.format(expnum))
-        hdr.set("EXPTIME{0:1d}".format(expnum), ehdr0['EXPTIME'], 'EXPTIME of exposure {} (sec)'.format(expnum))
-        hdr.set("MJDATE{0:1d}".format(expnum), ehdr0['MJDATE'], 'MJD at start of exposure {}'.format(expnum))
-        hdr.set("MJDEND{0:1d}".format(expnum), ehdr0['MJDEND'], 'MJDEND at end of exposure {}'.format(expnum))
-        hdr.set("BJD{0:1d}".format(expnum), ehdr1['BJD'], 'BJD at start of exposure {}'.format(expnum))
-        hdr.set("BERV{0:1d}".format(expnum), ehdr1['BERV'], 'BERV at start of exposure {}'.format(expnum))
-
-    return hdr
-
+    return polar_header(p, loc, hdr)
 
 
 def create_pol_product(product, p, loc):
@@ -373,7 +226,5 @@ def create_pol_product(product, p, loc):
         primary_header.remove('FILENAME', ignore_missing=True)
 
         hdu_list.writeto(product, overwrite=True)
-    except :
+    except:
         print('ERROR: Creation of {} failed'.format(product))
-
-
