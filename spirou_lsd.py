@@ -64,7 +64,7 @@ if options.lsdmask != "" :
     loc['LSD_MASK_FILE'] = options.lsdmask
 else :
     # select an lsd mask file from repositories
-    loc['LSD_MASK_FILE'] = spirouLSD.select_lsd_mask(p)
+    loc['LSD_MASK_FILE'] = spirouLSD.select_lsd_mask(p, loc)
 
 # ------------------------------------------------------------------
 # Run LSD Analysis

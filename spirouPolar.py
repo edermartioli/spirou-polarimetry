@@ -8,11 +8,8 @@ Created on 2018-06-12 at 9:31
 @author: E. Martioli
 
 """
-from __future__ import division
 import numpy as np
 import os
-
-import spirouLSD
 
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
@@ -44,7 +41,7 @@ __NAME__ = 'spirouPolar.py'
 def sort_polar_files(p):
     """
     Function to sort input data for polarimetry.
-        
+    
     :param p: parameter dictionary, ParamDict containing constants
         Must contain at least:
             LOG_OPT: string, option for logging
@@ -138,10 +135,10 @@ def sort_polar_files(p):
     return polardict
 
 
-def load_data(p, polardict, loc):
+def load_data(p, polardict, loc, silent=True):
     """
     Function to load input SPIRou data for polarimetry.
-        
+    
     :param p: parameter dictionary, ParamDict containing constants
         Must contain at least:
             LOG_OPT: string, option for logging
@@ -152,7 +149,7 @@ def load_data(p, polardict, loc):
                       input data
         
     :param loc: parameter dictionary, ParamDict to store data
-        
+    
     :return p, loc: parameter dictionaries,
         The updated parameter dictionary adds/updates the following:
             FIBER: saves reference fiber used for base file in polar sequence
@@ -171,6 +168,11 @@ def load_data(p, polardict, loc):
     stokesparams = p['IC_POLAR_STOKES_PARAMS']
     polarfibers = p['IC_POLAR_FIBERS']
 
+    if silent:
+        import warnings
+        warnings.simplefilter(action='ignore', category=RuntimeWarning)
+
+    
     # First identify which stokes parameter is used in the input data
     stokes_detected = []
     # loop around filenames in polardict
@@ -238,9 +240,9 @@ def load_data(p, polardict, loc):
             loc['HEADER0'] = hdu_base[0].header
             loc['HEADER1'] = hdu_base[1].header
             if 'OBJTEMP' in loc['HEADER0'].keys() :
-                p['OBJTEMP'] = loc['HEADER0']['OBJTEMP']
+                loc['OBJTEMP'] = loc['HEADER0']['OBJTEMP']
             elif 'OBJTEMP' in loc['HEADER1'].keys() :
-                p['OBJTEMP'] = loc['HEADER1']['OBJTEMP']
+                loc['OBJTEMP'] = loc['HEADER1']['OBJTEMP']
 
         for fiber in polarfibers:
             # set fiber+exposure key string
@@ -333,7 +335,7 @@ def load_data(p, polardict, loc):
                 four_exposures_detected.append(keystr)
 
         exp_count += 1
-            
+    
     # initialize number of exposures to zero
     n_exposures = 0
     # now find out whether there is enough exposures
@@ -354,13 +356,13 @@ def load_data(p, polardict, loc):
     loc['POLARDICT'] = polardict
 
     # calculate time related quantities
-    loc = calculate_polar_times(p, polardict, loc)
+    loc = calculate_polar_times(polardict, loc)
 
     # return loc
     return p, loc
 
 
-def calculate_polar_times(p, polardict, loc) :
+def calculate_polar_times(polardict, loc) :
     """
         Function to calculate time related quantities of polar product
         
@@ -409,10 +411,10 @@ def calculate_polar_times(p, polardict, loc) :
         
         # calculate mjd at middle of exposure
         mid_mjds.append(float(hdr0['MJDATE']) + float(hdr0['EXPTIME'])/(2.*86400.))
-            
+        
         # calculate bjd at middle of exposure
         mid_bjds.append(float(hdr1['BJD']) + float(hdr0['EXPTIME'])/(2.*86400.))
-            
+        
         # calculate mean A+B flux
         meanflux = np.nanmean(loc['RAWFLUXDATA']['A_{0}'.format(expnum)] + loc['RAWFLUXDATA']['B_{0}'.format(expnum)])
         # append mean A+B flux to the array
@@ -421,7 +423,7 @@ def calculate_polar_times(p, polardict, loc) :
     # add elapsed time parameter keyword to header
     elapsed_time = (bjd_last - bjd_first) * 86400. + exptime_last
     loc['ELAPSED_TIME'] = elapsed_time
-    
+
     # save total exposure time
     loc['TOTEXPTIME'] = tot_exptime
     
@@ -456,8 +458,7 @@ def calculate_polar_times(p, polardict, loc) :
     # add mean BJD
     meanbjd = meanbjd / loc['NEXPOSURES']
     loc['MEANBJD'] = meanbjd
-    
-    
+
     return loc
 
 
@@ -465,7 +466,7 @@ def calculate_polarimetry(p, loc):
     """
     Function to call functions to calculate polarimetry either using
     the Ratio or Difference methods.
-        
+    
     :param p: parameter dictionary, ParamDict containing constants
         Must contain at least:
             LOG_OPT: string, option for logging
@@ -473,10 +474,15 @@ def calculate_polarimetry(p, loc):
                              "Difference"
 
     :param loc: parameter dictionary, ParamDict containing data
-        
+    
     :return polarfunc: function, either polarimetry_diff_method(p, loc)
                        or polarimetry_ratio_method(p, loc)
     """
+
+    if p['IC_POLAR_APERO'] :
+        from apero import core
+        # Get Logging function
+        WLOG = core.wlog
 
     # get parameters from p
     method = p['IC_POLAR_METHOD']
@@ -487,7 +493,11 @@ def calculate_polarimetry(p, loc):
         return polarimetry_ratio_method(p, loc)
     else:
         emsg = 'Method="{0}" not valid for polarimetry calculation'
-        print('error', emsg.format(method))
+        
+        if p['IC_POLAR_APERO'] :
+            WLOG(p, 'error', emsg.format(method))
+        else :
+            print('error', emsg.format(method))
         return 1
 
 
@@ -514,9 +524,16 @@ def calculate_stokes_i(p, loc):
     """
     func_name = __NAME__ + '.calculate_stokes_I()'
     name = 'CalculateStokesI'
+    
     # log start of Stokes I calculations
     wmsg = 'Running function {0} to calculate Stokes I total flux'
-    print('info', wmsg.format(name))
+    if p['IC_POLAR_APERO'] :
+        from apero import core
+        # Get Logging function
+        WLOG = core.wlog
+        WLOG(p, 'info', wmsg.format(name))
+    else :
+        print('info', wmsg.format(name))
     # get parameters from loc
     if p['IC_POLAR_INTERPOLATE_FLUX'] :
         data, errdata = loc['FLUXDATA'], loc['FLUXERRDATA']
@@ -554,7 +571,10 @@ def calculate_stokes_i(p, loc):
 
     # log end of Stokes I intensity calculations
     wmsg = 'Routine {0} run successfully'
-    print('info', wmsg.format(name))
+    if p['IC_POLAR_APERO'] :
+        WLOG(p, 'info', wmsg.format(name))
+    else :
+        print('info', wmsg.format(name))
     # return loc
     return loc
 
@@ -580,13 +600,13 @@ def polarimetry_diff_method(p, loc):
     :return loc: parameter dictionary, the updated parameter dictionary
         Adds/updates the following:
             loc['POL']: numpy array (2D), degree of polarization data, which
-                        should be the same shape as E2DS files, i.e, 
+                        should be the same shape as E2DS files, i.e,
                         loc[DATA][FIBER_EXP]
             loc['POLERR']: numpy array (2D), errors of degree of polarization,
                            same shape as loc['POL']
-            loc['NULL1']: numpy array (2D), 1st null polarization, same 
+            loc['NULL1']: numpy array (2D), 1st null polarization, same
                           shape as loc['POL']
-            loc['NULL2']: numpy array (2D), 2nd null polarization, same 
+            loc['NULL2']: numpy array (2D), 2nd null polarization, same
                           shape as loc['POL']
     """
 
@@ -594,7 +614,14 @@ def polarimetry_diff_method(p, loc):
     name = 'polarimetryDiffMethod'
     # log start of polarimetry calculations
     wmsg = 'Running function {0} to calculate polarization'
-    print('info', wmsg.format(name))
+    
+    if p['IC_POLAR_APERO'] :
+        from apero import core
+        # Get Logging function
+        WLOG = core.wlog
+        WLOG(p, 'info', wmsg.format(name))
+    else :
+        print('info', wmsg.format(name))
     # get parameters from loc
     if p['IC_POLAR_INTERPOLATE_FLUX'] :
         data, errdata = loc['FLUXDATA'], loc['FLUXERRDATA']
@@ -698,14 +725,20 @@ def polarimetry_diff_method(p, loc):
     else:
         wmsg = ('Number of exposures in input data is not sufficient'
                 ' for polarimetry calculations... exiting')
-        print('error', wmsg)
+        if p['IC_POLAR_APERO'] :
+            WLOG(p, 'error', wmsg)
+        else :
+            print('error', wmsg)
 
     # set the method
     loc['METHOD'] = 'Difference'
 
     # log end of polarimetry calculations
     wmsg = 'Routine {0} run successfully'
-    print('info', wmsg.format(name))
+    if p['IC_POLAR_APERO'] :
+        WLOG(p,'info', wmsg.format(name))
+    else :
+        print('info', wmsg.format(name))
     # return loc
     return loc
 
@@ -731,13 +764,13 @@ def polarimetry_ratio_method(p, loc):
     :return loc: parameter dictionary, the updated parameter dictionary
         Adds/updates the following:
             loc['POL']: numpy array (2D), degree of polarization data, which
-                        should be the same shape as E2DS files, i.e, 
+                        should be the same shape as E2DS files, i.e,
                         loc[DATA][FIBER_EXP]
             loc['POLERR']: numpy array (2D), errors of degree of polarization,
                            same shape as loc['POL']
-            loc['NULL1']: numpy array (2D), 1st null polarization, same 
+            loc['NULL1']: numpy array (2D), 1st null polarization, same
                           shape as loc['POL']
-            loc['NULL2']: numpy array (2D), 2nd null polarization, same 
+            loc['NULL2']: numpy array (2D), 2nd null polarization, same
                           shape as loc['POL']
     """
     func_name = __NAME__ + '.polarimetry_ratio_method()'
@@ -745,7 +778,14 @@ def polarimetry_ratio_method(p, loc):
 
     # log start of polarimetry calculations
     wmsg = 'Running function {0} to calculate polarization'
-    print('info', wmsg.format(name))
+    if p['IC_POLAR_APERO'] :
+        from apero import core
+        # Get Logging function
+        WLOG = core.wlog
+        WLOG(p, 'info', wmsg.format(name))
+    else :
+        print('info', wmsg.format(name))
+
     # get parameters from loc
     if p['IC_POLAR_INTERPOLATE_FLUX'] :
         data, errdata = loc['FLUXDATA'], loc['FLUXERRDATA']
@@ -882,13 +922,19 @@ def polarimetry_ratio_method(p, loc):
     else:
         wmsg = ('Number of exposures in input data is not sufficient'
                 ' for polarimetry calculations... exiting')
-        print('error', wmsg)
+        if p['IC_POLAR_APERO'] :
+            WLOG(p, 'error', wmsg)
+        else :
+            print('error', wmsg)
 
     # set the method
     loc['METHOD'] = 'Ratio'
     # log end of polarimetry calculations
     wmsg = 'Routine {0} run successfully'
-    print('info', wmsg.format(name))
+    if p['IC_POLAR_APERO'] :
+        WLOG(p, 'info', wmsg.format(name))
+    else:
+        print('info', wmsg.format(name))
     # return loc
     return loc
 
@@ -1114,7 +1160,7 @@ def continuum_polarization(x, y, binsize=200, overlap=100, window=20, mode="medi
             else:
                 emsg = 'Can not recognize selected mode="{0}"...exiting'
                 print('error', emsg.format(mode))
-                    
+        
         if i == nbins - 1 :
             xbin.append(x[-1] + np.abs(x[-1] - x[-2]))
             # create mask to get rid of NaNs
@@ -1723,7 +1769,7 @@ def clean_polarimetry_data(loc, sigclip=False, nsig=3, overwrite=False):
             loc['CLEAN_POLERR'] = np.append(loc['CLEAN_POLERR'], polerr)
             loc['CLEAN_NULL1'] = np.append(loc['CLEAN_NULL1'], null1)
             loc['CLEAN_NULL2'] = np.append(loc['CLEAN_NULL2'], null2)
-                
+            
             loc['CLEAN_CONT_POL'] = np.append(loc['CLEAN_CONT_POL'], cont_pol)
             loc['CLEAN_CONT_FLUX'] = np.append(loc['CLEAN_CONT_FLUX'], cont_flux)
 
@@ -1748,7 +1794,7 @@ def clean_polarimetry_data(loc, sigclip=False, nsig=3, overwrite=False):
     loc['FLAT_STOKESIERR'] = deepcopy(loc['CLEAN_STOKESIERR'][sortmask])
     loc['FLAT_NULL1'] = deepcopy(loc['CLEAN_NULL1'][sortmask])
     loc['FLAT_NULL2'] = deepcopy(loc['CLEAN_NULL2'][sortmask])
-    
+
     loc['CONT_POL'] = deepcopy(loc['CLEAN_CONT_POL'][sortmask])
     loc['CONT_FLUX'] = deepcopy(loc['CLEAN_CONT_FLUX'][sortmask])
 
@@ -1941,104 +1987,6 @@ def save_pol_fits(filename, p, loc) :
     mef_hdu.writeto(filename, overwrite=True)
 
 
-def polar_header(p, loc, hdr):
-    """
-        Function to add polarimetry keywords in the header of polar products
-        
-        :param p: parameter dictionary, ParamDict containing constants
-        
-        :param loc: parameter dictionary, ParamDict containing data
-        
-        :param hdr: ParamDict, FITS header dictionary
-
-        :return hdr: ParamDict, updated FITS header dictionary
-    """
-    
-    polardict = loc['POLARDICT']
-
-    
-    ########################
-    # keywords set as placeholder, but without meaning since it's run outside the DRS
-    ########################
-    hdr.set('DRS_EOUT', 'OBJ_FP  ', 'DRS Extraction input DPRTYPE')
-    #hdr.set('DRSPID', 'None', 'The process ID that outputted this file.')
-    hdr.set('WAVELOC', 'WaveAB', 'Where the wave solution was read from')
-    hdr.set('QCC', 1, 'All quality control passed')
-    hdr.set('QCC001N', 'None    ', 'Quality control variable name')
-    hdr.set('QCC001V', 'None    ', 'Qualtity control value')
-    hdr.set('QCC001L', 'None    ', 'Quality control logic')
-    hdr.set('QCC001P', 1, 'Quality control passed')
-    ########################
-
-    # loop over files in polar sequence to set *e.fits filenames into INF* keywords
-    for filename in polardict.keys():
-        # get expnum
-        expnum = polardict[filename]['exposure']
-        
-        # add keywords to inform which files have been used to create output
-        # The header of e.fits already has INF1*, so I have used INF2*, but not sure it's correct
-        infkey = "INF2{0:03d}".format(expnum)
-        hdr.set(infkey, os.path.basename(filename), 'Input file used to create output file={}'.format(expnum))
-
-    ########################
-    # add polarimetry related keywords, as in previous version:
-    ########################
-    hdr.set('ELAPTIME', loc['ELAPSED_TIME'], 'Elapsed time of observation (sec)')
-    hdr.set('MJDCEN', loc['MJDCEN'], 'MJD at center of observation')
-    hdr.set('BJDCEN', loc['BJDCEN'], 'BJD at center of observation')
-    hdr.set('BERVCEN', loc['BERVCEN'], 'BERV at center of observation')
-    hdr.set('MEANBJD', loc['MEANBJD'], 'Mean BJD for polar sequence')
-    hdr.set('STOKES', loc['STOKES'], 'Stokes paremeter: Q, U, V, or I')
-    hdr.set('POLNEXP', loc['NEXPOSURES'], 'Number of exposures for polarimetry')
-    hdr.set('TOTETIME', loc['TOTEXPTIME'], 'Total exposure time (sec)')
-    hdr.set('POL_DEG', 'POL_DEG ', 'DRS output identification code')
-    hdr.set('POLMETHO', p['IC_POLAR_METHOD'], 'Polarimetry method')
-    ########################
-
-    ########################
-    # suggested new keywords, which have only been introduced in the new version of polarimetry
-    ########################
-    hdr.set('MJDFWCEN', loc['MJDFWCEN'], 'MJD at flux-weighted center of 4 exposures')
-    hdr.set('BJDFWCEN', loc['BJDFWCEN'], 'BJD at flux-weighted center of 4 exposures')
-    hdr.set('MEANBERV', loc['MEANBERV'], 'Mean BERV of 4 exposures')
-    hdr.set('TCORRFLX', p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'], 'Polarimetry used tellcorr flux')
-    hdr.set('CORRBERV', p['IC_POLAR_BERV_CORRECT'], 'BERV corrected before polarimetry')
-    hdr.set('CORRSRV', p['IC_POLAR_SOURCERV_CORRECT'], 'Source RV corrected before polarimetry')
-    hdr.set('NSTOKESI', p['IC_POLAR_NORMALIZE_STOKES_I'], 'Normalize Stokes I by continuum')
-    hdr.set('PINTERPF', p['IC_POLAR_INTERPOLATE_FLUX'], 'Interp flux to correct for shifts between exps')
-    hdr.set('PSIGCLIP', p['IC_POLAR_CLEAN_BY_SIGMA_CLIPPING'], 'Apply polarimetric sigma-clip cleaning')
-    hdr.set('PNSIGMA', p['IC_POLAR_NSIGMA_CLIPPING'], 'Number of sigmas of sigma-clip cleaning')
-    hdr.set('PREMCONT', p['IC_POLAR_REMOVE_CONTINUUM'], 'Remove continuum polarization')
-    hdr.set('PCONTAL', p['IC_POLAR_CONTINUUM_DETECTION_ALGORITHM'], 'Polarization continuum detection algorithm')
-    hdr.set('SICONTAL', p['IC_STOKESI_CONTINUUM_DETECTION_ALGORITHM'], 'Stokes I continuum detection algorithm')
-    hdr.set('PCPOLFIT', p['IC_POLAR_CONT_POLYNOMIAL_FIT'], 'Use polynomial fit for continuum polarization')
-    hdr.set('PCPOLDEG', p['IC_POLAR_CONT_DEG_POLYNOMIAL'], 'Degree of polynomial to fit continuum polariz.')
-    hdr.set('SICFUNC', p['IC_STOKESI_IRAF_CONT_FIT_FUNCTION'], 'Function to fit Stokes I continuum')
-    hdr.set('SIPOLDEG', p['IC_STOKESI_IRAF_CONT_FUNCTION_ORDER'], 'Degree of polynomial to fit Stokes I continuum')
-    hdr.set('PCBINSIZ', p['IC_POLAR_CONT_BINSIZE'], 'Polarimetry continuum bin size')
-    hdr.set('PCOVERLA', p['IC_POLAR_CONT_OVERLAP'], 'Polarimetry continuum overlap size')
-    for i in range(len(p['IC_POLAR_CONT_TELLMASK'])):
-        hdr.set('PCEWL{0:03d}'.format(i),"{0},{1}".format(p['IC_POLAR_CONT_TELLMASK'][i][0],p['IC_POLAR_CONT_TELLMASK'][i][1]), 'Excluded wave range (nm) for cont detection {0}/{1}'.format(i,len(p['IC_POLAR_CONT_TELLMASK'])-1))
-    ###############
-
-    # loop over files in polar sequence to add keywords related to each exposure in sequence
-    for filename in polardict.keys():
-        # get expnum
-        expnum = polardict[filename]['exposure']
-        # get header
-        ehdr0 = fits.getheader(filename,0)
-        ehdr1 = fits.getheader(filename,1)
-
-        hdr.set("FILENAM{0:1d}".format(expnum), ehdr0['FILENAME'], 'Base filename of exposure {}'.format(expnum))
-        hdr.set("EXPTIME{0:1d}".format(expnum), ehdr0['EXPTIME'], 'EXPTIME of exposure {} (sec)'.format(expnum))
-        hdr.set("MJDATE{0:1d}".format(expnum), ehdr0['MJDATE'], 'MJD at start of exposure {}'.format(expnum))
-        hdr.set("MJDEND{0:1d}".format(expnum), ehdr0['MJDEND'], 'MJDEND at end of exposure {}'.format(expnum))
-        hdr.set("BJD{0:1d}".format(expnum), ehdr1['BJD'], 'BJD at start of exposure {}'.format(expnum))
-        hdr.set("BERV{0:1d}".format(expnum), ehdr1['BERV'], 'BERV at start of exposure {}'.format(expnum))
-
-    return hdr
-
-
 def load_pol_fits(filename, loc) :
 
     hdu = fits.open(filename)
@@ -2062,33 +2010,6 @@ def load_pol_fits(filename, loc) :
     else:
         loc['STOKES'] = ""
     return loc
-
-
-def nrefrac(wavelength, density=1.0):
-   """Calculate refractive index of air from Cauchy formula.
-
-   Input: wavelength in nm, density of air in amagat (relative to STP,
-   e.g. ~10% decrease per 1000m above sea level).
-   Returns N = (n-1) * 1.e6.
-   """
-
-   # The IAU standard for conversion from air to vacuum wavelengths is given
-   # in Morton (1991, ApJS, 77, 119). For vacuum wavelengths (VAC) in
-   # Angstroms, convert to air wavelength (AIR) via:
-
-   #  AIR = VAC / (1.0 + 2.735182E-4 + 131.4182 / VAC^2 + 2.76249E8 / VAC^4)
-
-   wl2inv = (1.e3/wavelength)**2
-   refracstp = 272.643 + 1.2288 * wl2inv  + 3.555e-2 * wl2inv**2
-   return density * refracstp
-
-def convert_vacuum_to_air_wl(vacuum_wavelength, air_density=1.0) :
-    air_wavelength = vacuum_wavelength / ( 1. + 1.e-6 * nrefrac(vacuum_wavelength, density=air_density))
-    return air_wavelength
-
-def convert_air_to_vacuum_wl(air_wavelength, air_density=1.0) :
-    vacuum_wavelength = air_wavelength * ( 1. + 1.e-6 * nrefrac(air_wavelength, density=air_density))
-    return vacuum_wavelength
 
 
 def fit_continuum(wav, spec, function='polynomial', order=3, nit=5, rej_low=2.0,
@@ -2265,3 +2186,564 @@ def fit_continuum(wav, spec, function='polynomial', order=3, nit=5, rej_low=2.0,
                     lw=.2)
         pl.show()
     return cont
+
+
+
+# =============================================================================
+# Define user functions
+# =============================================================================
+def apero_sort_polar_files(params):
+    """
+    Function to sort input data for polarimetry.
+    
+    :param params: parameter dictionary, ParamDict containing constants
+        Must contain at least:
+            LOG_OPT: string, option for logging
+            REDUCED_DIR: string, directory path where reduced data are stored
+            ARG_FILE_NAMES: list, list of input filenames
+            KW_CMMTSEQ: string, FITS keyword where to find polarimetry
+                        information
+                        
+    :return polardict: dictionary, ParamDict containing information on the
+                       input data
+                       adds an entry for each filename, each entry is a
+                       dictionary containing:
+                       - basename, hdr, cdr, exposure, stokes, fiber, data
+                       for each file
+    """
+    from apero import core
+    # Get Logging function
+    WLOG = core.wlog
+
+    func_name = __NAME__ + '.apero_sort_polar_files()'
+
+    reduc_dir = params['INPUTS']['directory']
+    calibdb_dir = params['DRS_CALIB_DB']
+
+    polardict = {}
+    
+    # set default properties
+    stokes, exposure, expstatus = 'UNDEF', 0, False
+
+    exp1 = params['INPUTS']['EXP1']
+    exp2 = params['INPUTS']['EXP2']
+    exp3 = params['INPUTS']['EXP3']
+    exp4 = params['INPUTS']['EXP4']
+    
+    # Set vector of input files
+    input_exposures = [exp1,exp2,exp3,exp4]
+    
+    polardict["INPUT_EXPOSURES"] = input_exposures
+    
+    # loop over all input files
+    for exp in polardict["INPUT_EXPOSURES"]:
+        
+        # initialize dictionary to store data for this file
+        polardict[exp] = {}
+        
+        e2dsff_A = "{0}/{1}_pp_e2dsff_A.fits".format(reduc_dir,exp)
+        e2dsff_B = "{0}/{1}_pp_e2dsff_B.fits".format(reduc_dir,exp)
+        e2dsff_AB = "{0}/{1}_pp_e2dsff_AB.fits".format(reduc_dir,exp)
+        tcorr_A = "{0}/{1}_pp_e2dsff_tcorr_A.fits".format(reduc_dir,exp)
+        tcorr_B = "{0}/{1}_pp_e2dsff_tcorr_B.fits".format(reduc_dir,exp)
+        tcorr_AB = "{0}/{1}_pp_e2dsff_tcorr_AB.fits".format(reduc_dir,exp)
+        recon_AB = "{0}/{1}_pp_e2dsff_recon_AB.fits".format(reduc_dir,exp)
+        
+        polardict[exp]["e2dsff_A"] = e2dsff_A
+        polardict[exp]["e2dsff_B"] = e2dsff_B
+        polardict[exp]["e2dsff_AB"] = e2dsff_AB
+        polardict[exp]["tcorr_A"] = tcorr_A
+        polardict[exp]["tcorr_B"] = tcorr_B
+        polardict[exp]["tcorr_AB"] = tcorr_AB
+        polardict[exp]["recon_AB"] = recon_AB
+        polardict[exp]["e2dsff_A"] = e2dsff_A
+        
+        if params['IC_POLAR_SOURCERV_CORRECT'] :
+            polardict[exp]["SOURCE_RV"] = float(params['INPUTS']['objrv'])
+            wmsg = 'Source RV = {0:.5f} km/s loaded successfully'
+            WLOG(params, 'info', wmsg.format())
+        else :
+            polardict[exp]["SOURCE_RV"] = 0.0
+        
+        if os.path.exists(e2dsff_A) and os.path.exists(e2dsff_B) and os.path.exists(e2dsff_AB):
+            
+            wmsg = 'E2DS files {0}, {1}, {2} loaded successfully'
+            wargs = [e2dsff_A, e2dsff_B, e2dsff_AB]
+            WLOG(params,'info', wmsg.format(*wargs))
+        
+            # load SPIRou spectrum
+            hduAB = fits.open(e2dsff_AB)
+            hdrAB = hduAB[0].header
+
+            # load SPIRou spectrum
+            hduA = fits.open(e2dsff_A)
+            hdrA = hduA[0].header
+
+            # load SPIRou spectrum
+            hduB = fits.open(e2dsff_B)
+            hdrB = hduB[0].header
+
+            # set wavelength calibration files
+            waveAB = "{0}/{1}".format(calibdb_dir,hdrAB["WAVEFILE"])
+            waveA = "{0}/{1}".format(calibdb_dir,hdrA["WAVEFILE"])
+            waveB = "{0}/{1}".format(calibdb_dir,hdrB["WAVEFILE"])
+
+            if os.path.exists(waveAB) and os.path.exists(waveA) and os.path.exists(waveB):
+                polardict[exp]['WAVE_AB'] = waveAB
+                polardict[exp]['WAVE_A'] = waveA
+                polardict[exp]['WAVE_B'] = waveB
+
+                wmsg = 'WAVE files {0}, {1}, {2} loaded successfully'
+                wargs = [waveAB,waveA,waveB]
+                WLOG(params, 'info', wmsg.format(*wargs))
+            else :
+                defaultwave = "{0}/{1}".format(calibdb_dir,"MASTER_WAVE_2400416c_AB.fits")
+                polardict[exp]['WAVE_AB'] = defaultwave
+                polardict[exp]['WAVE_A'] = defaultwave
+                polardict[exp]['WAVE_B'] = defaultwave
+                
+                wmsg = 'WAVE files {0}, {1}, {2} do not exist, setting default wave file {3}'
+                wargs = [waveAB,waveA,waveB,defaultwave]
+                WLOG(params, 'warning', wmsg.format(*wargs))
+
+            # set blaze calibration files
+            blazeAB = "{0}/{1}".format(calibdb_dir,hdrAB["CDBBLAZE"])
+            blazeA = "{0}/{1}".format(calibdb_dir,hdrA["CDBBLAZE"])
+            blazeB = "{0}/{1}".format(calibdb_dir,hdrB["CDBBLAZE"])
+            
+            if os.path.exists(blazeAB) and os.path.exists(blazeA) and os.path.exists(blazeB) :
+                polardict[exp]['BLAZE_AB'] = blazeAB
+                polardict[exp]['BLAZE_A'] = blazeA
+                polardict[exp]['BLAZE_B'] = blazeB
+                wmsg = 'BLAZE files {0}, {1}, {2} loaded successfully'
+                wargs = [blazeAB,blazeA,blazeB]
+                WLOG(params, 'info', wmsg.format(*wargs))
+            else :
+                wmsg = 'BLAZE files {0}, {1}, {2} do not exist, exiting ...'
+                wargs = [blazeAB,blazeA,blazeB]
+                WLOG(params,'error', wmsg.format(*wargs))
+                exit()
+
+            # add BERV value from header
+            polardict[exp]["BERV"] = hdrAB['BERV']
+
+            # add basename of exposure
+            polardict[exp]["basename"] = os.path.basename(exp)
+        
+            # try to get polarisation header key
+            if ('CMMTSEQ' in hdrAB) and hdrAB['CMMTSEQ'] != "":
+                cmmtseq = hdrAB['CMMTSEQ'].split(" ")
+                stokes, exposure = cmmtseq[0], int(cmmtseq[2][0])
+                expstatus = True
+                if exposure == 1 :
+                    polardict["BASE_EXPOSURE"] = exp
+            else:
+                exposure += 1
+                wmsg = 'File {0} has empty key="CMMTSEQ", setting Stokes={1} Exposure={2}'
+                wargs = [exp, stokes, exposure]
+                WLOG(params,'warning', wmsg.format(*wargs))
+                expstatus = False
+
+            # store exposure number
+            polardict[exp]["exposure"] = exposure
+            # store stokes parameter
+            polardict[exp]["stokes"] = stokes
+
+            # ------------------------------------------------------------------
+            # log file addition
+            wmsg = 'File {0}: Stokes={1} exposure={2}'
+            wargs = [exp, stokes, str(exposure)]
+            WLOG(params,'info', wmsg.format(*wargs))
+        
+        else :
+            wmsg = 'E2DS files {0}, {1}, {2} do not exist, exiting ...'
+            wargs = [e2dsff_A, e2dsff_B, e2dsff_AB]
+            WLOG(params,'error', wmsg.format(*wargs))
+            exit()
+
+    return polardict
+
+
+def apero_load_data(params, silent=True):
+    """
+    Function to load input SPIRou data for polarimetry.
+    
+    :param params: parameter dictionary, ParamDict containing constants
+        Must contain at least:
+            LOG_OPT: string, option for logging
+            IC_POLAR_STOKES_PARAMS: list, list of stokes parameters
+            IC_POLAR_FIBERS: list, list of fiber types used in polarimetry
+        
+    :return loc: parameter dictionaries,
+        The loc parameter dictionary contains the following:
+            POLARDICT:  dictionary, ParamDict containing information on
+            the input data
+            FIBER: saves reference fiber used for base file in polar sequence
+                   The updated data dictionary adds/updates the following:
+            DATA: array of numpy arrays (2D), E2DS data from all fibers in
+                  all input exposures.
+            BASENAME, string, basename for base FITS file
+            HDR: dictionary, header from base FITS file
+            CDR: dictionary, header comments from base FITS file
+            STOKES: string, stokes parameter detected in sequence
+            NEXPOSURES: int, number of exposures in polar sequence
+    """
+    
+    from apero import core
+    # Get Logging function
+    WLOG = core.wlog
+
+    func_name = __NAME__ + '.apero_load_data()'
+    
+    # get dict containing information on the input files
+    polardict = apero_sort_polar_files(params)
+    
+    # initialize output data container
+    loc = {}
+
+    # get constants from params
+    stokesparams = params['IC_POLAR_STOKES_PARAMS']
+    polarfibers = params['IC_POLAR_FIBERS']
+
+    # First identify which stokes parameter is used in the input data
+    stokes_detected = []
+    
+    if silent:
+        import warnings
+        warnings.simplefilter(action='ignore', category=RuntimeWarning)
+
+    # loop around filenames in polardict
+    for exp in polardict["INPUT_EXPOSURES"]:
+        # get this entry
+        entry = polardict[exp]
+        # condition 1: stokes parameter undefined
+        cond1 = entry['stokes'].upper() == 'UNDEF'
+        # condition 2: stokes parameter in defined parameters
+        cond2 = entry['stokes'].upper() in stokesparams
+        # condition 3: stokes parameter not already detected
+        cond3 = entry['stokes'].upper() not in stokes_detected
+        # if (cond1 or cond2) and cond3 append to detected list
+        if (cond1 or cond2) and cond3:
+            stokes_detected.append(entry['stokes'].upper())
+    # if more than one stokes parameter is identified then exit program
+    if len(stokes_detected) == 0:
+        stokes_detected.append('UNDEF')
+    elif len(stokes_detected) > 1:
+        wmsg = ('Identified more than one stokes parameter in the input '
+                'data... exiting')
+        WLOG(params,'error', wmsg)
+
+    # set all possible combinations of fiber type and exposure number
+    four_exposure_set = []
+    for fiber in polarfibers:
+        for exposure in range(1, 5):
+            keystr = '{0}_{1}'.format(fiber, exposure)
+            four_exposure_set.append(keystr)
+
+    # detect all input combinations of fiber type and exposure number
+    four_exposures_detected = []
+    loc['RAWFLUXDATA'], loc['RAWFLUXERRDATA'], loc['RAWBLAZEDATA'] = {}, {}, {}
+    loc['FLUXDATA'], loc['FLUXERRDATA'] = {}, {}
+    loc['WAVEDATA'], loc['BLAZEDATA'] = {}, {}
+    loc['TELLURICDATA'] = {}
+
+    exp_count = 0
+    # loop around the exposures in polardict
+    for exp in polardict["INPUT_EXPOSURES"]:
+        
+        # get this entry
+        entry = polardict[exp]
+        # get exposure value
+        exposure = entry['exposure']
+        
+        # save basename, wavelength, and object name for 1st exposure:
+        if (exp_count == 0) :
+            base_exp = polardict['BASE_EXPOSURE']
+            loc['BASENAME'] = base_exp
+            
+            # get this entry
+            entry_base = polardict[loc['BASENAME']]
+
+            # set key for e2ds fits file
+            base_e2ds = entry_base["e2dsff_AB"]
+            # load SPIRou e2ds spectrum
+            base_e2ds_hdu = fits.open(base_e2ds)
+            base_e2ds_hdr = base_e2ds_hdu[0].header
+            
+            # set wave key for given fiber
+            base_wave_e2ds = entry_base["WAVE_AB"]
+            # load SPIRou wavelength calibration
+            base_wave_hdu = fits.open(base_wave_e2ds)
+            waveAB = deepcopy(base_wave_hdu[0].data)
+            
+            if params['IC_POLAR_BERV_CORRECT'] :
+                rv_corr = 1.0 + (entry_base['BERV'] - entry_base['SOURCE_RV']) / (constants.c / 1000.)
+                waveAB *= rv_corr
+            
+            base_blaze_e2ds = entry_base["BLAZE_AB"]
+            base_blaze_hdu = fits.open(base_blaze_e2ds)
+            
+            loc['WAVE'] = waveAB
+            loc['BLAZE'] = deepcopy(base_blaze_hdu[0].data)
+            loc['OBJECT'] = base_e2ds_hdr['OBJECT']
+            loc['HEADER0'] = base_e2ds_hdu[0].header
+            loc['HEADER1'] = base_e2ds_hdu[0].header
+            if 'OBJTEMP' in loc['HEADER0'].keys() :
+                loc['OBJTEMP'] = loc['HEADER0']['OBJTEMP']
+            elif 'OBJTEMP' in loc['HEADER1'].keys() :
+                loc['OBJTEMP'] = loc['HEADER1']['OBJTEMP']
+            else :
+                loc['OBJTEMP'] = 0.
+        
+        # load recon
+        recon = polardict[exp]["recon_AB"]
+        recon_hdu = fits.open(recon)
+        recon_hdr = recon_hdu[0].header
+
+        for fiber in polarfibers:
+            # set fiber+exposure key string
+            keystr = '{0}_{1}'.format(fiber, exposure)
+            
+            # set key for e2ds fits file
+            e2ds_key = "e2dsff_{}".format(fiber)
+            e2ds = polardict[exp][e2ds_key]
+            # load SPIRou e2ds spectrum
+            e2ds_hdu = fits.open(e2ds)
+            e2ds_hdr = e2ds_hdu[0].header
+
+            # set key for tcorr fits file
+            tcorr_key = "tcorr_{}".format(fiber)
+            tcorr = polardict[exp][tcorr_key]
+            # load SPIRou tcorr spectrum
+            tcorr_hdu = fits.open(tcorr)
+            tcorr_hdr = tcorr_hdu[0].header
+
+            # set wave key for given fiber
+            wave_key = "WAVE_{}".format(fiber)
+            wave_e2ds = polardict[exp][wave_key]
+            # load SPIRou wavelength calibration
+            wave_hdu = fits.open(wave_e2ds)
+            wave_hdr = wave_hdu[0].header
+
+            # set blaze key for given fiber
+            blaze_key = "BLAZE_{}".format(fiber)
+            blaze_e2ds = polardict[exp][blaze_key]
+            # load SPIRou blaze
+            blaze_hdu = fits.open(blaze_e2ds)
+            blaze_hdr = blaze_hdu[0].header
+
+            # get flux data
+            flux_data = e2ds_hdu[0].data
+            
+            # get normalized blaze data
+            blaze_data = blaze_hdu[0].data / np.nanmax(blaze_hdu[0].data)
+            
+            # get wavelength data
+            wave_data = wave_hdu[0].data
+            
+            # apply BERV correction if requested
+            if params['IC_POLAR_BERV_CORRECT'] :
+                rv_corr = 1.0 + (entry['BERV'] - entry['SOURCE_RV']) / (constants.c / 1000.)
+                wave_data *= rv_corr
+
+            # store wavelength and blaze vectors
+            loc['WAVEDATA'][keystr], loc['RAWBLAZEDATA'][keystr] = wave_data, blaze_data
+
+            # calculate flux errors assuming Poisson noise only
+            fluxerr_data = np.zeros_like(flux_data)
+            for o in range(len(fluxerr_data)) :
+                fluxerr_data[o] = np.sqrt(flux_data[o])
+
+            # save raw flux data and errors
+            loc['RAWFLUXDATA'][keystr] = deepcopy(flux_data / blaze_data)
+            loc['RAWFLUXERRDATA'][keystr] = deepcopy(fluxerr_data / blaze_data)
+
+            # get shape of flux data
+            data_shape = flux_data.shape
+
+            # initialize output arrays to nan
+            loc['FLUXDATA'][keystr] = np.empty(data_shape) * np.nan
+            loc['FLUXERRDATA'][keystr] = np.empty(data_shape) * np.nan
+            loc['BLAZEDATA'][keystr] = np.empty(data_shape) * np.nan
+            loc['TELLURICDATA'][keystr] = np.empty(data_shape) * np.nan
+
+            # remove tellurics if possible and if 'IC_POLAR_USE_TELLURIC_CORRECTED_FLUX' parameter is set to "True"
+            
+            if params['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'] :
+                telluric_spectrum = recon_hdu[0].data
+        
+            for order_num in range(len(wave_data)) :
+                
+                clean = ~np.isnan(flux_data[order_num])
+                
+                if len(wave_data[order_num][clean]) :
+                    # interpolate flux data to match wavelength grid of first exposure
+                    tck = interpolate.splrep(wave_data[order_num][clean], flux_data[order_num][clean], s=0)
+                
+                    # interpolate blaze data to match wavelength grid of first exposure
+                    btck = interpolate.splrep(wave_data[order_num][clean], blaze_data[order_num][clean], s=0)
+
+                    wlmask = loc['WAVE'][order_num] > wave_data[order_num][clean][0]
+                    wlmask &= loc['WAVE'][order_num] < wave_data[order_num][clean][-1]
+                
+                    loc['BLAZEDATA'][keystr][order_num][wlmask] = interpolate.splev(loc['WAVE'][order_num][wlmask], btck, der=0)
+                
+                    loc['FLUXDATA'][keystr][order_num][wlmask] = interpolate.splev(loc['WAVE'][order_num][wlmask], tck, der=0) / loc['BLAZEDATA'][keystr][order_num][wlmask]
+                    loc['FLUXERRDATA'][keystr][order_num][wlmask] = np.sqrt(loc['FLUXDATA'][keystr][order_num][wlmask] / loc['BLAZEDATA'][keystr][order_num][wlmask] )
+                
+                    # remove tellurics if possible and if 'IC_POLAR_USE_TELLURIC_CORRECTED_FLUX' parameter is set to "True"
+                    if params['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'] :
+                        
+                        # clean telluric nans
+                        clean &= ~np.isnan(telluric_spectrum[order_num])
+                        
+                        if len(wave_data[order_num][clean]) :
+                            # interpolate telluric data
+                            ttck = interpolate.splrep(wave_data[order_num][clean], telluric_spectrum[order_num][clean], s=0)
+                            
+                            loc['TELLURICDATA'][keystr][order_num][clean] = interpolate.splev(loc['WAVE'][order_num][clean], ttck, der=0)
+                        
+                        # divide spectrum by telluric transmission spectrum
+                        loc['FLUXDATA'][keystr][order_num] /= loc['TELLURICDATA'][keystr][order_num]
+                        loc['FLUXERRDATA'][keystr][order_num] /= loc['TELLURICDATA'][keystr][order_num]
+
+            # add to four exposure set if correct type
+            cond1 = keystr in four_exposure_set
+            cond2 = keystr not in four_exposures_detected
+            
+            if cond1 and cond2:
+                four_exposures_detected.append(keystr)
+
+        exp_count += 1
+    
+    # initialize number of exposures to zero
+    n_exposures = 0
+    # now find out whether there is enough exposures
+    # first test the 4-exposure set
+    if len(four_exposures_detected) == 8:
+        n_exposures = 4
+    else:
+        wmsg = ('Number of exposures in input data is not sufficient'
+                ' for polarimetry calculations... exiting')
+        WLOG(params,'error', wmsg)
+
+    # set stokes parameters defined
+    loc['STOKES'] = stokes_detected[0]
+    # set the number of exposures detected
+    loc['NEXPOSURES'] = n_exposures
+
+    # add polardict to loc
+    loc['POLARDICT'] = polardict
+
+    # calculate time related quantities
+    loc = apero_calculate_polar_times(polardict, loc)
+
+    # return loc
+    return loc
+
+
+def apero_calculate_polar_times(polardict, loc) :
+    """
+        Function to calculate time related quantities of polar product
+        
+        :param p: parameter dictionary, ParamDict containing constants
+        
+        :param polardict: dictionary, ParamDict containing information on the
+        input data
+
+        :param loc: parameter dictionary, ParamDict containing data
+    """
+    
+    mjd_first, mjd_last = 0.0, 0.0
+    meanbjd, tot_exptime = 0.0, 0.0
+    meanberv = 0.
+    bjd_first, bjd_last, exptime_last = 0.0, 0.0, 0.0
+    berv_first, berv_last = 0.0, 0.0
+    bervmaxs = []
+    
+    mid_mjds, mid_bjds, mean_fluxes = [],[],[]
+    
+    # loop around the exposures in polardict
+    for exp in polardict["INPUT_EXPOSURES"]:
+        
+        # get this entry
+        entry = polardict[exp]
+        
+        # get exposure value
+        expnum = entry['exposure']
+    
+        # get e2ds file for header
+        e2ds = entry['e2dsff_AB']
+        # get header
+        hdr = fits.getheader(e2ds)
+        
+        # calcualte total exposure time
+        tot_exptime += float(hdr['EXPTIME'])
+        # get values for BJDCEN calculation
+        if expnum == 1:
+            mjd_first = float(hdr['MJDATE'])
+            bjd_first = float(hdr['BJD'])
+            berv_first = float(hdr['BERV'])
+        elif expnum == loc['NEXPOSURES']:
+            mjd_last = float(hdr['MJDATE'])
+            bjd_last = float(hdr['BJD'])
+            berv_last = float(hdr['BERV'])
+            exptime_last = float(hdr['EXPTIME'])
+        meanbjd += float(hdr['BJD'])
+        # append BERVMAX value of each exposure
+        bervmaxs.append(float(hdr['BERVMAX']))
+
+        # sum all BERV values
+        meanberv += hdr['BERV']
+        
+        # calculate mjd at middle of exposure
+        mid_mjds.append(float(hdr['MJDATE']) + float(hdr['EXPTIME'])/(2.*86400.))
+        
+        # calculate bjd at middle of exposure
+        mid_bjds.append(float(hdr['BJD']) + float(hdr['EXPTIME'])/(2.*86400.))
+        
+        # calculate mean A+B flux
+        meanflux = np.nanmean(loc['RAWFLUXDATA']['A_{0}'.format(expnum)] + loc['RAWFLUXDATA']['B_{0}'.format(expnum)])
+        # append mean A+B flux to the array
+        mean_fluxes.append(meanflux)
+
+    # add elapsed time parameter keyword to header
+    elapsed_time = (bjd_last - bjd_first) * 86400. + exptime_last
+    loc['ELAPSED_TIME'] = elapsed_time
+
+    # save total exposure time
+    loc['TOTEXPTIME'] = tot_exptime
+
+    # cast arrays to numpy arrays
+    mid_mjds, mid_bjds = np.array(mid_mjds), np.array(mid_bjds)
+    mean_fluxes = np.array(mean_fluxes)
+
+    # calculate flux-weighted mjd of polarimetric sequence
+    mjdfwcen = np.sum(mean_fluxes * mid_mjds) / np.sum(mean_fluxes)
+    loc['MJDFWCEN'] = mjdfwcen
+
+    # calculate flux-weighted bjd of polarimetric sequence
+    bjdfwcen = np.sum(mean_fluxes * mid_bjds) / np.sum(mean_fluxes)
+    loc['BJDFWCEN'] = bjdfwcen
+    
+    # calculate MJD at center of polarimetric sequence
+    mjdcen = mjd_first + (mjd_last - mjd_first + exptime_last/86400.)/2.0
+    loc['MJDCEN'] = mjdcen
+    # calculate BJD at center of polarimetric sequence
+    bjdcen = bjd_first + (bjd_last - bjd_first + exptime_last/86400.)/2.0
+    loc['BJDCEN'] = bjdcen
+
+    # calculate BERV at center by linear interpolation
+    berv_slope = (berv_last - berv_first) / (bjd_last - bjd_first)
+    berv_intercept = berv_first - berv_slope * bjd_first
+    loc['BERVCEN'] = berv_intercept + berv_slope * bjdcen
+    loc['MEANBERV'] = meanberv / loc['NEXPOSURES']
+    # calculate maximum bervmax
+    bervmax = np.max(bervmaxs)
+    loc['BERVMAX'] = bervmax
+
+    # add mean BJD
+    meanbjd = meanbjd / loc['NEXPOSURES']
+    loc['MEANBJD'] = meanbjd
+
+    return loc

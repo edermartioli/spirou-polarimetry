@@ -11,6 +11,7 @@ Created on 2018-08-08 at 14:53
 import numpy as np
 from scipy import constants
 from scipy.optimize import curve_fit
+from scipy.interpolate import UnivariateSpline
 import os
 
 from copy import copy, deepcopy
@@ -19,7 +20,6 @@ import matplotlib.pyplot as plt
 import glob
 
 import astropy.io.fits as fits
-import spirouPolar
 
 from scipy.sparse import csr_matrix
 
@@ -34,7 +34,7 @@ __NAME__ = 'spirouLSD.py'
 # Define user functions
 # =============================================================================
 
-def lsd_analysis_wrapper(p, loc):
+def lsd_analysis_wrapper(p, loc, verbose=False):
     """
         Function to call functions to perform Least Squares Deconvolution (LSD)
         analysis on the polarimetry data.
@@ -52,12 +52,13 @@ def lsd_analysis_wrapper(p, loc):
     # func_name = __NAME__ + '.lsd_analysis_wrapper()'
     name = 'LSDAnalysis'
 
-    # log start of LSD analysis calculations
-    wmsg = 'Running function {0} to perform LSD analysis'
-    print('info', wmsg.format(name))
+    if verbose :
+        # log start of LSD analysis calculations
+        wmsg = 'Running function {0} to perform LSD analysis'
+        print('info', wmsg.format(name))
 
     # load spectral lines
-    loc = load_lsd_spectral_lines(p, loc)
+    loc = load_lsd_spectral_lines(p, loc, verbose)
 
     # get wavelength ranges covering spectral lines in the ccf mask
     loc = get_wl_ranges(p, loc)
@@ -71,10 +72,10 @@ def lsd_analysis_wrapper(p, loc):
     return loc
 
 
-def load_lsd_spectral_lines(p, loc):
+def load_lsd_spectral_lines(p, loc, verbose=False):
     """
     Function to load spectral lines data for LSD analysis.
-        
+    
     :param p: parameter dictionary, ParamDict containing constants
         Must contain at least:
             LOG_OPT: string, option for logging
@@ -98,8 +99,9 @@ def load_lsd_spectral_lines(p, loc):
 
     # if path exists use it
     if os.path.exists(loc['LSD_MASK_FILE']):
-        wmsg = 'Line mask used for LSD computation: {0}'
-        print('info', wmsg.format(loc['LSD_MASK_FILE']))
+        if verbose :
+            wmsg = 'Line mask used for LSD computation: {0}'
+            print('info', wmsg.format(loc['LSD_MASK_FILE']))
         
         #Columns in the file are:
         # (0) wavelength (nm)
@@ -119,13 +121,15 @@ def load_lsd_spectral_lines(p, loc):
     
     # else raise error
     else:
-        emsg = 'LSD Line mask file: "{0}" not found, unable to proceed'
-        print('error', emsg.format(loc['LSD_MASK_FILE']))
+        if verbose :
+            emsg = 'LSD Line mask file: "{0}" not found, unable to proceed'
+            print('error', emsg.format(loc['LSD_MASK_FILE']))
         wlcf, znf, depthf, landef = None, None, None, None
         excpotf, flagf = None, None
 
     loc["NUMBER_OF_LINES_IN_MASK"] = len(wlcf)
-    print("Number of lines in the original mask = ", len(wlcf))
+    if verbose :
+        print("Number of lines in the original mask = ", len(wlcf))
 
     # initialize data vectors
     wlc, zn, depth, lande = [], [], [], []
@@ -157,7 +161,7 @@ def load_lsd_spectral_lines(p, loc):
     excpot, flag = excpot[gmask], flag[gmask]
 
     if p['IC_POLAR_LSD_CCFLINES_AIR_WAVE'] :
-        wlc = spirouPolar.convert_air_to_vacuum_wl(wlc)
+        wlc = convert_air_to_vacuum_wl(wlc)
     
     # create mask to cutoff lines with depth lower than IC_POLAR_LSD_MIN_LINEDEPTH
     dmask = np.where(depth > p['IC_POLAR_LSD_MIN_LINEDEPTH'])
@@ -166,7 +170,8 @@ def load_lsd_spectral_lines(p, loc):
     excpot, flag = excpot[dmask], flag[dmask]
 
     loc["NUMBER_OF_LINES_USED"] = len(wlc)
-    print("Number of lines after filtering = ", len(wlc))
+    if verbose :
+        print("Number of lines after filtering = ", len(wlc))
 
     loc["MEAN_WAVE_OF_LINES"] = np.nanmean(wlc)
     loc["MEAN_LANDE_OF_LINES"] = np.nanmean(lande)
@@ -194,7 +199,7 @@ def get_wl_ranges(p, loc):
     Function to generate a list of spectral ranges covering all spectral
     lines in the CCF mask, where the width of each individual range is
     defined by the LSD velocity vector
-        
+    
     :param p: parameter dictionary, ParamDict containing constants
         Must contain at least:
             LOG_OPT: string, option for logging
@@ -316,7 +321,7 @@ def prepare_polarimetry_data(p, loc):
                 # TODO: Should be in constant file
                 kwargs = dict(binsize=80, overlap=15, window=3,
                               mode='max', use_linear_fit=True)
-                cont, xbin, ybin = spirouPolar.continuum(wl, flux, **kwargs)
+                cont, xbin, ybin = continuum(wl, flux, **kwargs)
                 # normalize flux
                 flux = flux / cont
                 fluxerr = fluxerr / cont
@@ -335,7 +340,7 @@ def prepare_polarimetry_data(p, loc):
 def lsd_analysis(p, loc):
     """
     Function to perform Least Squares Deconvolution (LSD) analysis.
-        
+    
     :param p: parameter dictionary, ParamDict containing constants
         Must contain at least:
             LOG_OPT: string, option for logging
@@ -360,9 +365,9 @@ def lsd_analysis(p, loc):
         The updated parameter dictionary adds/updates the following:
             loc['LSD_VELOCITIES']: numpy array (1D), LSD profile velocities
             loc['LSD_STOKESI']: numpy array (1D), LSD profile for Stokes I
-            loc['LSD_STOKESI_MODEL']: numpy array (1D), LSD gaussian model 
+            loc['LSD_STOKESI_MODEL']: numpy array (1D), LSD gaussian model
                                       profile for Stokes I
-            loc['LSD_STOKESVQU']: numpy array (1D), LSD profile for Stokes 
+            loc['LSD_STOKESVQU']: numpy array (1D), LSD profile for Stokes
                                   Q,U,V polarimetry spectrum
             loc['LSD_NULL']: numpy array (1D), LSD profile for null
                                   polarization spectrum
@@ -458,6 +463,7 @@ def lsd_analysis(p, loc):
 
     return loc
 
+
 def line_pattern_matrix(wl, wlc, depth, weight, vels):
     """
     Function to calculate the line pattern matrix M given in Eq (4) of paper
@@ -524,7 +530,7 @@ def calculate_lsd_profile(wl, flux, fluxerr, vels, mm, normalize=False):
     
     :param wl: numpy array (1D), input wavelength data (size = n)
     :param flux: numpy array (1D), input flux or polarimetry data (size = n)
-    :param fluxerr: numpy array (1D), input flux or polarimetry error data 
+    :param fluxerr: numpy array (1D), input flux or polarimetry error data
                     (size = n)
     :param vels: numpy array (1D), , LSD profile velocity vector (size = m)
     :param mm: numpy array (2D) of size n x m, line pattern matrix for LSD.
@@ -564,7 +570,7 @@ def calculate_lsd_profile(wl, flux, fluxerr, vels, mm, normalize=False):
 
     if normalize:
         # calculate continuum of LSD profile to remove trend
-        cont_z, xbin, ybin = spirouPolar.continuum(vels, zz, binsize=20,
+        cont_z, xbin, ybin = continuum(vels, zz, binsize=20,
                                                   overlap=5,
                                                   sigmaclip=3.0, window=2,
                                                   mode="median",
@@ -582,7 +588,7 @@ def calculate_lsd_profile(wl, flux, fluxerr, vels, mm, normalize=False):
 def gauss_function(x, a, x0, sigma, dc):
     return a * np.exp(-0.5 * ((x - x0) / sigma) ** 2) + dc
 
-def fit_gaussian_to_lsd_profile(vels, zz):
+def fit_gaussian_to_lsd_profile(vels, zz, verbose=False):
     """
         Function to fit gaussian to LSD Stokes I profile.
         
@@ -618,9 +624,10 @@ def fit_gaussian_to_lsd_profile(vels, zz):
     try :
         popt, pcov = curve_fit(gauss_function, vels, z_inv, p0=guess)
     except :
-        # log start of LSD analysis calculations
-        wmsg = ': failed to fit gaussian to LSD profile'
-        print('WARNING', wmsg)
+        if verbose :
+            # log start of LSD analysis calculations
+            wmsg = ': failed to fit gaussian to LSD profile'
+            print('WARNING', wmsg)
         popt = guess
     # initialize output profile vector
     z_gauss = np.zeros_like(vels)
@@ -646,9 +653,9 @@ def fit_gaussian_to_lsd_profile(vels, zz):
 def get_order_ranges():
     """
     Function to provide the valid wavelength ranges for each order in SPIrou.
-        
+    
     :param: None
-        
+    
     :return orders: array of float pairs for wavelength ranges
     """
     # TODO: Should be moved to file in .../INTROOT/SpirouDRS/data/
@@ -689,7 +696,7 @@ def polar_lsd_plot(p, loc):
 
     # ---------------------------------------------------------------------
     # set up fig
-    fig, frames = spirouPolar.setup_figure(p, ncols=1, nrows=3)
+    fig, frames = setup_figure(p, ncols=1, nrows=3)
     # clear the current figure
     #plt.clf()
 
@@ -729,11 +736,7 @@ def polar_lsd_plot(p, loc):
     # set title and labels
     frame.set(title=title, xlabel=xlabel, ylabel=ylabel)
     # ---------------------------------------------------------------------
-
-    # ---------------------------------------------------------------------
-    # turn off interactive plotting
-    # end plotting function properly
-    spirouPolar.end_plotting(p, plot_name)
+    plt.show()
 
 
 def save_lsd_fits(filename, loc, p) :
@@ -775,13 +778,14 @@ def save_lsd_fits(filename, loc, p) :
     header.set('WAVEAVG', loc["MEAN_WAVE_OF_LINES"], 'Mean wavelength of lines used in LSD analysis')
     header.set('LANDEAVG', loc["MEAN_LANDE_OF_LINES"], 'Mean lande of lines used in LSD analysis')
 
+    """
     idx = 0
     for key in p.keys() :
         param_key = "PARAM{:03d}".format(idx)
         header.set(param_key, key, str(p[key]))
         #print(param_key, p[key], key)
         idx += 1
-    
+    """
     primary_hdu = fits.PrimaryHDU(header=header)
 
     hdu_vels = fits.ImageHDU(data=loc['LSD_VELOCITIES'], name="Velocity", header=header1)
@@ -798,7 +802,7 @@ def save_lsd_fits(filename, loc, p) :
     mef_hdu.writeto(filename, overwrite=True)
 
 
-def select_lsd_mask(p) :
+def select_lsd_mask(p, loc) :
     """
         Function to select a LSD mask file from a given list of
         mask repositories that best match the object temperature.
@@ -818,7 +822,7 @@ def select_lsd_mask(p) :
         repo_full_path = os.path.dirname(__file__) + "/" + repo
         file_list += glob.glob(repo_full_path)
     
-    obj_Temperature = p['OBJTEMP']
+    obj_Temperature = loc['OBJTEMP']
 
     #print("Selecting mask for Teff=",obj_Temperature)
 
@@ -849,3 +853,227 @@ def select_lsd_mask(p) :
     #print("Selectect mask:", selected_mask)
     
     return selected_mask
+
+#### Function to detect continuum #########
+def continuum(x, y, binsize=200, overlap=100, sigmaclip=3.0, window=3,
+              mode="median", use_linear_fit=False, telluric_bands=[], outx=None):
+    """
+    Function to calculate continuum
+    :param x,y: numpy array (1D), input data (x and y must be of the same size)
+    :param binsize: int, number of points in each bin
+    :param overlap: int, number of points to overlap with adjacent bins
+    :param sigmaclip: int, number of times sigma to cut-off points
+    :param window: int, number of bins to use in local fit
+    :param mode: string, set combine mode, where mode accepts "median", "mean",
+                 "max"
+    :param use_linear_fit: bool, whether to use the linar fit
+    :param telluric_bands: list of float pairs, list of IR telluric bands, i.e,
+                           a list of wavelength ranges ([wl0,wlf]) for telluric
+                           absorption
+    
+    :return continuum, xbin, ybin
+        continuum: numpy array (1D) of the same size as input arrays containing
+                   the continuum data already interpolated to the same points
+                   as input data.
+        xbin,ybin: numpy arrays (1D) containing the bins used to interpolate
+                   data for obtaining the continuum
+    """
+
+    if outx is None :
+        outx = x
+    
+    # set number of bins given the input array length and the bin size
+    nbins = int(np.floor(len(x) / binsize)) + 1
+
+    # initialize arrays to store binned data
+    xbin, ybin = [], []
+    
+    for i in range(nbins):
+        # get first and last index within the bin
+        idx0 = i * binsize - overlap
+        idxf = (i + 1) * binsize + overlap
+        # if it reaches the edges then reset indexes
+        if idx0 < 0:
+            idx0 = 0
+        if idxf >= len(x):
+            idxf = len(x) - 1
+        # get data within the bin
+        xbin_tmp = np.array(x[idx0:idxf])
+        ybin_tmp = np.array(y[idx0:idxf])
+
+        # create mask of telluric bands
+        telluric_mask = np.full(np.shape(xbin_tmp), False, dtype=bool)
+        for band in telluric_bands :
+            telluric_mask += (xbin_tmp > band[0]) & (xbin_tmp < band[1])
+
+        # mask data within telluric bands
+        xtmp = xbin_tmp[~telluric_mask]
+        ytmp = ybin_tmp[~telluric_mask]
+        
+        # create mask to get rid of NaNs
+        nanmask = np.logical_not(np.isnan(ytmp))
+        
+        if i == 0 and not use_linear_fit:
+            xbin.append(x[0] - np.abs(x[1] - x[0]))
+            # create mask to get rid of NaNs
+            localnanmask = np.logical_not(np.isnan(y))
+            ybin.append(np.median(y[localnanmask][:binsize]))
+        
+        if len(xtmp[nanmask]) > 2 :
+            # calculate mean x within the bin
+            xmean = np.mean(xtmp[nanmask])
+            # calculate median y within the bin
+            medy = np.median(ytmp[nanmask])
+
+            # calculate median deviation
+            medydev = np.median(np.absolute(ytmp[nanmask] - medy))
+            # create mask to filter data outside n*sigma range
+            filtermask = (ytmp[nanmask] > medy) & (ytmp[nanmask] < medy +
+                                                   sigmaclip * medydev)
+            if len(ytmp[nanmask][filtermask]) > 2:
+                # save mean x wihthin bin
+                xbin.append(xmean)
+                if mode == 'max':
+                    # save maximum y of filtered data
+                    ybin.append(np.max(ytmp[nanmask][filtermask]))
+                elif mode == 'median':
+                    # save median y of filtered data
+                    ybin.append(np.median(ytmp[nanmask][filtermask]))
+                elif mode == 'mean':
+                    # save mean y of filtered data
+                    ybin.append(np.mean(ytmp[nanmask][filtermask]))
+                else:
+                    emsg = 'Can not recognize selected mode="{0}"...exiting'
+                    print('error', emsg.format(mode))
+
+        if i == nbins - 1 and not use_linear_fit:
+            xbin.append(x[-1] + np.abs(x[-1] - x[-2]))
+            # create mask to get rid of NaNs
+            localnanmask = np.logical_not(np.isnan(y[-binsize:]))
+            ybin.append(np.median(y[-binsize:][localnanmask]))
+
+    # Option to use a linearfit within a given window
+    if use_linear_fit:
+        # initialize arrays to store new bin data
+        newxbin, newybin = [], []
+
+        # loop around bins to obtain a linear fit within a given window size
+        for i in range(len(xbin)):
+            # set first and last index to select bins within window
+            idx0 = i - window
+            idxf = i + 1 + window
+            # make sure it doesnt go over the edges
+            if idx0 < 0: idx0 = 0
+            if idxf > nbins: idxf = nbins - 1
+
+            # perform linear fit to these data
+            slope, intercept, r_value, p_value, std_err = stats.linregress(xbin[idx0:idxf], ybin[idx0:idxf])
+
+            if i == 0 :
+                # append first point to avoid crazy behaviours in the edge
+                newxbin.append(x[0] - np.abs(x[1] - x[0]))
+                newybin.append(intercept + slope * newxbin[0])
+            
+            # save data obtained from the fit
+            newxbin.append(xbin[i])
+            newybin.append(intercept + slope * xbin[i])
+
+            if i == len(xbin) - 1 :
+                # save data obtained from the fit
+                newxbin.append(x[-1] + np.abs(x[-1] - x[-2]))
+                newybin.append(intercept + slope * newxbin[-1])
+
+        xbin, ybin = newxbin, newybin
+
+    # interpolate points applying an Spline to the bin data
+    sfit = UnivariateSpline(xbin, ybin, s=0)
+    #sfit.set_smoothing_factor(0.5)
+    
+    # Resample interpolation to the original grid
+    cont = sfit(outx)
+
+    # return continuum and x and y bins
+    return cont, xbin, ybin
+    ##-- end of continuum function
+
+
+def nrefrac(wavelength, density=1.0):
+   """Calculate refractive index of air from Cauchy formula.
+
+   Input: wavelength in nm, density of air in amagat (relative to STP,
+   e.g. ~10% decrease per 1000m above sea level).
+   Returns N = (n-1) * 1.e6.
+   """
+
+   # The IAU standard for conversion from air to vacuum wavelengths is given
+   # in Morton (1991, ApJS, 77, 119). For vacuum wavelengths (VAC) in
+   # Angstroms, convert to air wavelength (AIR) via:
+
+   #  AIR = VAC / (1.0 + 2.735182E-4 + 131.4182 / VAC^2 + 2.76249E8 / VAC^4)
+
+   wl2inv = (1.e3/wavelength)**2
+   refracstp = 272.643 + 1.2288 * wl2inv  + 3.555e-2 * wl2inv**2
+   return density * refracstp
+
+
+def convert_vacuum_to_air_wl(vacuum_wavelength, air_density=1.0) :
+    air_wavelength = vacuum_wavelength / ( 1. + 1.e-6 * nrefrac(vacuum_wavelength, density=air_density))
+    return air_wavelength
+
+
+def convert_air_to_vacuum_wl(air_wavelength, air_density=1.0) :
+    vacuum_wavelength = air_wavelength * ( 1. + 1.e-6 * nrefrac(air_wavelength, density=air_density))
+    return vacuum_wavelength
+
+def setup_figure(p, figsize=(10, 8), ncols=1, nrows=1, attempt=0):
+    """
+    Extra steps to setup figure. On some OS getting error
+
+    "TclError" when using TkAgg. A possible solution to this is to
+    try switching to Agg
+
+    :param p:
+    :param figsize:
+    :param ncols:
+    :param nrows:
+    :return:
+    """
+    func_name = __NAME__ + '.setup_figure()'
+    fix = True
+    while fix:
+        if ncols == 0 and nrows == 0:
+            try:
+                fig = plt.figure()
+                plt.clf()
+                return fig
+            except Exception as e:
+                if fix:
+                    attempt_tcl_error_fix()
+                    fix = False
+                else:
+                    emsg1 = 'An matplotlib error occured'
+                    emsg2 = '\tBackend = {0}'.format(plt.get_backend())
+                    emsg3 = '\tError {0}: {1}'.format(type(e), e)
+                    print(p, 'error', [emsg1, emsg2, emsg3])
+        else:
+            try:
+                fig, frames = plt.subplots(ncols=ncols, nrows=nrows,
+                                           figsize=figsize)
+                return fig, frames
+            except Exception as e:
+                if fix:
+                    attempt_tcl_error_fix()
+                    fix = False
+                else:
+                    emsg1 = 'An matplotlib error occured'
+                    emsg2 = '\tBackend = {0}'.format(plt.get_backend())
+                    emsg3 = '\tError {0}: {1}'.format(type(e), e)
+                    print('error', [emsg1, emsg2, emsg3])
+
+    if attempt == 0:
+        return setup_figure(p, figsize=figsize, ncols=ncols, nrows=nrows,
+                            attempt=1)
+    else:
+        emsg1 = 'Problem with matplotlib figure/frame setup'
+        emsg2 = '\tfunction = {0}'.format(func_name)
+        print('error', [emsg1, emsg2])

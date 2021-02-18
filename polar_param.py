@@ -6,6 +6,9 @@ def load_polar_parameters() :
     #initialize parameters dictionary
     p = {}
     
+    # Whether or not in APERO
+    p['IC_POLAR_APERO'] = False
+
     # Whether or not to use telluric subctracted flux
     p['IC_POLAR_USE_TELLURIC_CORRECTED_FLUX'] = True
 
