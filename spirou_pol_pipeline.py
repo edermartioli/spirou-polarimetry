@@ -10,7 +10,7 @@
     
     Simple usage example:
     
-    python $PATH/spirou_pol_pipeline.py --epattern=*e.fits -L
+    python ~/spirou-tools/spirou-polarimetry/spirou_pol_pipeline.py --input=*e.fits -Lsb -p -v
     
     """
 
@@ -46,12 +46,16 @@ def generate_polar_sets(file_list, verbose=False) :
                     print("File:",file_list[i], "is in spectroscopic mode, skipping ...")
                 continue
         
-            elif hdr["SBRHB1_P"] == "P14" and hdr["SBRHB2_P"] == "P16" :
+            elif (hdr["SBRHB1_P"] == "P16" and hdr["SBRHB2_P"] == "P2") or \
+                (hdr["SBRHB1_P"] == "P2" and hdr["SBRHB2_P"] == "P14") or \
+                (hdr["SBRHB1_P"] == "P14" and hdr["SBRHB2_P"] == "P16") :
                 pol_sequence[0] = file_list[i]
             
                 current_exp_num = 1
         
-            elif hdr["SBRHB1_P"] == "P2" and hdr["SBRHB2_P"] == "P16":
+            elif (hdr["SBRHB1_P"] == "P16" and hdr["SBRHB2_P"] == "P14") or \
+                 (hdr["SBRHB1_P"] == "P2" and hdr["SBRHB2_P"] == "P2") or \
+                (hdr["SBRHB1_P"] == "P2" and hdr["SBRHB2_P"] == "P16") :
                 if current_exp_num == 1 :
                     if verbose :
                         print("File:",file_list[i], "is exposure 2, OK ...")
@@ -66,7 +70,11 @@ def generate_polar_sets(file_list, verbose=False) :
                     if verbose :
                         print("File",file_list[i]," is exposure 2, but sequence is out-of-order, skipping ...")
                     continue
-            elif hdr["SBRHB1_P"] == "P2" and hdr["SBRHB2_P"] == "P4":
+                        
+            elif (hdr["SBRHB1_P"] == "P4" and hdr["SBRHB2_P"] == "P2") or \
+                 (hdr["SBRHB1_P"] == "P14" and hdr["SBRHB2_P"] == "P14") or \
+                 (hdr["SBRHB1_P"] == "P2" and hdr["SBRHB2_P"] == "P4") :
+                     
                 if current_exp_num == 2 :
                     if verbose :
                         print("File:",file_list[i], "is exposure 3, OK ...")
@@ -82,7 +90,10 @@ def generate_polar_sets(file_list, verbose=False) :
                         print("File",file_list[i]," is exposure 3, but sequence is out-of-order, skipping ...")
                     continue
 
-            elif hdr["SBRHB1_P"] == "P14" and hdr["SBRHB2_P"] == "P4":
+            elif (hdr["SBRHB1_P"] == "P4" and hdr["SBRHB2_P"] == "P14") or \
+                 (hdr["SBRHB1_P"] == "P14" and hdr["SBRHB2_P"] == "P2") or \
+                 (hdr["SBRHB1_P"] == "P14" and hdr["SBRHB2_P"] == "P4") :
+                     
                 if current_exp_num == 3 :
                     if verbose :
                         print("File:",file_list[i], "is exposure 4, OK ...")
@@ -145,38 +156,45 @@ def generate_polar_continuous_sets(polar_sets, verbose=False) :
 
 
 parser = OptionParser()
-parser.add_option("-e", "--epattern", dest="epattern", help="Spectral e.fits data pattern",type='string',default="*e.fits")
+parser.add_option("-i", "--input", dest="input", help="Input spectral e.fits data pattern",type='string',default="*e.fits")
 parser.add_option("-m", "--lsdmask", dest="lsdmask", help="Input LSD mask",type='string',default="")
 parser.add_option("-c", action="store_true", dest="contset", help="Produce continuous set", default=False)
 parser.add_option("-L", action="store_true", dest="run_lsd", help="Run LSD analysis", default=False)
+parser.add_option("-s", action="store_true", dest="stack_lsd_profiles", help="Stack LSD profiles", default=False)
+parser.add_option("-b", action="store_true", dest="blong_timeseries", help="Calculate longitudinal magnetic field time series", default=False)
 parser.add_option("-v", action="store_true", dest="verbose", help="verbose", default=False)
+parser.add_option("-p", action="store_true", dest="plot", help="plot", default=False)
 
 try:
     options,args = parser.parse_args(sys.argv[1:])
 except:
-    print("Error: check usage with  -h spirou_pol.py")
+    print("Error: check usage with  -h spirou_pol_pipeline.py")
     sys.exit(1)
 
 if options.verbose:
-    print('Spectral e.fits data pattern: ', options.epattern)
+    print('Spectral e.fits data pattern: ', options.input)
     print('LSD mask: ', options.lsdmask)
-
 
 spirou_pol_dir = os.path.dirname(__file__) + '/'
 
 # make list of efits data files
 if options.verbose:
     print("Creating list of e.fits spectrum files...")
-inputedata = sorted(glob.glob(options.epattern))
+inputedata = sorted(glob.glob(options.input))
 
 polar_sets = generate_polar_sets(inputedata)
 
 if options.contset :
     polar_sets = generate_polar_continuous_sets(polar_sets, verbose=True)
 
+object_name = "object"
+
 for key in polar_sets.keys() :
     
     output_pol = str(key).replace("e.fits","p.fits")
+    
+    if object_name == "object" :
+        object_name = fits.getheader(key,0)["OBJECT"].replace(" ","")
     
     seq = polar_sets[key]
     
@@ -190,3 +208,31 @@ for key in polar_sets.keys() :
     print("Running: ",command)
     os.system(command)
 
+
+if "e.fits" in options.input :
+    lsd_pattern = (options.input).replace("e.fits","_lsd.fits")
+else :
+    lsd_pattern = "*_lsd.fits"
+
+plot_flag = ""
+if options.plot :
+    plot_flag = "-p"
+verbose_flag = ""
+if options.verbose :
+    verbose_flag = "-v"
+
+if options.stack_lsd_profiles and options.run_lsd :
+    output_stack_lsd = object_name + "_lsd_stack.fits"
+    
+    command = "python {0}stack_lsd_profiles.py --input={1} --output={2} {3} {4}".format(spirou_pol_dir, lsd_pattern, output_stack_lsd, plot_flag, verbose_flag)
+
+    print("Running: ",command)
+    os.system(command)
+
+if options.blong_timeseries and options.run_lsd :
+    output_blong_timeseries = object_name + "_blong.rdb"
+    
+    command = "python {0}spirou_blong_timeseries.py --input={1} --output={2} {3} {4}".format(spirou_pol_dir, lsd_pattern, output_blong_timeseries, plot_flag, verbose_flag)
+
+    print("Running: ",command)
+    os.system(command)
