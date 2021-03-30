@@ -2,11 +2,7 @@
 
 `SPIRou-Polarimetry` is the SPIRou DRS module to perform polarimetry calculations.
 
-To start using `SPIRou-Polarimetry`, first make sure you have all the following depencies installed:
-
-`numpy`, `scipy`, `astropy`, `matplotlib`, `optparse`, `copy`
-
-Another option is to install Python 3 via anaconda.
+To start using `SPIRou-Polarimetry`, first make sure you have all the depencies installed. Most of them are installed by default in anaconda Python 3.X.
 
 Then download all files in this repository and run the following example:
 
