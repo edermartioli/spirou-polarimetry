@@ -31,12 +31,11 @@ Then one can run the polarimetry pipeline as in the following exemple below:
 ```
 python ~/spirou-polarimetry/spirou_pol_pipeline.py --input=*e.fits -Lsb
 ```
-The command line above will identify all 4-exposure polarimetric sequences in the input dataset, and it will calculate the polarimetric spectra `*p.fits` for every sequence. Then the following options are available:
+The command line above will identify all 4-exposure polarimetric sequences in the input dataset, and it will calculate the polarimetric spectra `*p.fits` for every sequence. Then the options `-L -s -b` have the following meaning:
 ```
 -L to calculate the least-squares deconvolution (LSD) profiles and save them as *_lsd.fits files. 
 -s to stack all LSD profiles and save it as OBJECT_lsd_stack.fits file 
 -b to calculate the longitudinal magnetic field time series and save it as OBJECT_blong.rdb file
--p to plot
 ```
 
 
