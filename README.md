@@ -19,4 +19,26 @@ Check if your results are similar to the products provided in the directory `exp
 
 Change input parameters in the file `polar_param.py` to test different flavors of reduction.
 
+To process a full data set automatically for several sequences obtained at different epochs one may first link all `*e.fits` and `*t.fits` data into a given directory, for example:
+```
+cd $MY_PATH/OBJECT/
+ln -s $PATH_TO_REDUCED_DATA/OBJECT/*e.fits .
+ln -s $PATH_TO_REDUCED_DATA/OBJECT/*t.fits .
+```
+
+Then one can run the polarimetry pipeline as in the following exemple below:
+
+```
+python ~/spirou-polarimetry/spirou_pol_pipeline.py --input=*e.fits -Lsb
+```
+The command line above will identify all 4-exposure polarimetric sequences in the input dataset, and it will calculate the polarimetric spectra `*p.fits` for every sequence. Then the following options are available:
+```
+-L to calculate the least-squares deconvolution (LSD) profiles and save them as *_lsd.fits files. 
+-s to stack all LSD profiles and save it as OBJECT_lsd_stack.fits file 
+-b to calculate the longitudinal magnetic field time series and save it as OBJECT_blong.rdb file
+-p to plot
+```
+
+
+
 
