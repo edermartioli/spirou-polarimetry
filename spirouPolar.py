@@ -1471,7 +1471,7 @@ def normalize_stokes_i(loc) :
     return loc
 
 
-def setup_figure(p, figsize=(10, 8), ncols=1, nrows=1, attempt=0):
+def setup_figure(p, figsize=(10, 8), ncols=1, nrows=1, attempt=0, sharex=False):
     """
     Extra steps to setup figure. On some OS getting error
 
@@ -1503,7 +1503,7 @@ def setup_figure(p, figsize=(10, 8), ncols=1, nrows=1, attempt=0):
                     print(p, 'error', [emsg1, emsg2, emsg3])
         else:
             try:
-                fig, frames = plt.subplots(ncols=ncols, nrows=nrows,
+                fig, frames = plt.subplots(ncols=ncols, nrows=nrows, sharex=sharex,
                                            figsize=figsize)
                 return fig, frames
             except Exception as e:
@@ -1997,6 +1997,8 @@ def load_pol_fits(filename, loc) :
     loc['HEADER0'] = header
     loc['HEADER1'] = header1
     
+    allheaders = header + header1
+    
     loc['POL'] = hdu['Pol'].data
     loc['POLERR'] = hdu['PolErr'].data
     loc['STOKESI'] = hdu['StokesI'].data
@@ -2009,6 +2011,9 @@ def load_pol_fits(filename, loc) :
         loc['STOKES'] = header['STOKES']
     else:
         loc['STOKES'] = ""
+
+    loc['OBJTEMP'] = allheaders['OBJTEMP']
+
     return loc
 
 
@@ -2224,14 +2229,9 @@ def apero_sort_polar_files(params):
     
     # set default properties
     stokes, exposure, expstatus = 'UNDEF', 0, False
-
-    exp1 = params['INPUTS']['EXP1']
-    exp2 = params['INPUTS']['EXP2']
-    exp3 = params['INPUTS']['EXP3']
-    exp4 = params['INPUTS']['EXP4']
     
     # Set vector of input files
-    input_exposures = [exp1,exp2,exp3,exp4]
+    input_exposures = params['POLAR_EXPOSURES']
     
     polardict["INPUT_EXPOSURES"] = input_exposures
     
