@@ -128,7 +128,8 @@ def make_2D_data_uniform(loc):
             null2_data[order_num][i] = loc['NULL2'][order_num][i]
 
             wave_data[order_num][i] = loc['WAVE'][order_num][i]
-            blaze_data[order_num][i] = loc['BLAZE'][order_num][i]
+            if 'BLAZE' in loc.keys() :
+                blaze_data[order_num][i] = loc['BLAZE'][order_num][i]
 
     loc['pol_data'] = pol_data
     loc['polerr_data'] = polerr_data
