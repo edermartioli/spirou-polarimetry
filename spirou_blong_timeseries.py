@@ -69,8 +69,8 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
             print("WARNING: Could not fit gaussian to Stokes I profile, skipping file {0}: {2}".format(i, inputdata[i]))
             continue
 
-        if "BJDCEN" in hdr.keys() :
-            bjd.append(float(hdr["BJDCEN"]))
+        if "MEANBJD" in hdr.keys() :
+            bjd.append(float(hdr["MEANBJD"]))
         elif "BJD" in hdr.keys() :
             bjd.append(float(hdr["BJD"]))
         else :
