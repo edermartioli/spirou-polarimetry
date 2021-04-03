@@ -184,7 +184,8 @@ def create_pol_product(product, p, loc):
         
         # same primary hdu as in first efits of sequence:
         primary_hdu = hdu_list[0]
-    
+        loc["HEADER0"] = primary_hdu.header
+        
         hdu_wave = fits.ImageHDU(data=loc['wave_data'], header=hdu_list['WaveAB'].header, name='WaveAB')
 
         # same cal extensions as in first efits of sequence:
@@ -195,6 +196,8 @@ def create_pol_product(product, p, loc):
         
         hdu_pol = fits.ImageHDU(data=loc['pol_data'], header=hdu_list['FluxA'].header, name='Pol')
         hdu_pol.header = add_polar_keywords(p, loc, hdu_pol.header)
+        loc["HEADER1"] = hdu_pol.header
+
         hdu_polerr = fits.ImageHDU(data=loc['polerr_data'], name='PolErr')
 
         hdu_stokesI = fits.ImageHDU(data=loc['stokesI_data'], header=hdu_list['FluxA'].header, name='StokesI')
@@ -231,6 +234,8 @@ def create_pol_product(product, p, loc):
         hdu_list.writeto(product, overwrite=True)
     except:
         print('ERROR: Creation of {} failed'.format(product))
+
+    return loc
 
 
 def polar_header(p, loc, hdr, apero=False):

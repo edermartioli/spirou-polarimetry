@@ -2487,7 +2487,7 @@ def apero_load_data(params, silent=True):
             loc['BLAZE'] = deepcopy(base_blaze_hdu[0].data)
             loc['OBJECT'] = base_e2ds_hdr['OBJECT']
             loc['HEADER0'] = base_e2ds_hdu[0].header
-            loc['HEADER1'] = base_e2ds_hdu[0].header
+            loc['HEADER1'] = base_e2ds_hdu[1].header
             if 'OBJTEMP' in loc['HEADER0'].keys() :
                 loc['OBJTEMP'] = loc['HEADER0']['OBJTEMP']
             elif 'OBJTEMP' in loc['HEADER1'].keys() :

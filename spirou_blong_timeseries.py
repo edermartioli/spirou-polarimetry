@@ -69,8 +69,8 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
             print("WARNING: Could not fit gaussian to Stokes I profile, skipping file {0}: {2}".format(i, inputdata[i]))
             continue
 
-        if "MEANBJD" in hdr.keys() :
-            bjd.append(float(hdr["MEANBJD"]))
+        if "BJDCEN" in hdr.keys() :
+            bjd.append(float(hdr["BJDCEN"]))
         elif "BJD" in hdr.keys() :
             bjd.append(float(hdr["BJD"]))
         else :
@@ -145,6 +145,8 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
         bfield.append(b)
         bfield_err.append(berr)
 
+        hdu.close()
+            
     bjd = np.array(bjd)
     lsd_rv = np.array(lsd_rv)
     airmass, snr = np.array(airmass), np.array(snr)
@@ -196,7 +198,7 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
     return loc
 
 
-def calculate_blong_timeseries(lsddata, use_corr_data=True, plot=False) :
+def calculate_blong_timeseries(lsddata, use_corr_data=True, plot=False, debug=False) :
 
     bjd = lsddata["BJD"]
     vels = lsddata["VELS"]
@@ -205,19 +207,38 @@ def calculate_blong_timeseries(lsddata, use_corr_data=True, plot=False) :
 
     blong, blong_err = [], []
     
+    ## First calculate possible residual continuum from the median profile
+    #  and remove it from the data.
+    pol_cont = continuum_lsd_I(lsddata["VELS"], lsddata["LSD_POL_MED"], lsddata["LSD_POL_MED_ERR"],fit_continuum=False, npcont=7, plot=False)
+    flux_cont = continuum_lsd_I(lsddata["VELS"], lsddata["LSD_FLUX_MED"], lsddata["LSD_FLUX_MED_ERR"],fit_continuum=False, npcont=7, plot=False)
+    
     if use_corr_data :
-        lsd_pol = lsddata["LSD_POL_CORR"]
-        lsd_flux = lsddata["LSD_FLUX_CORR"]
+        lsd_pol = lsddata["LSD_POL_CORR"] - pol_cont
+        lsd_flux = lsddata["LSD_FLUX_CORR"] / flux_cont
     else :
-        lsd_pol = lsddata["LSD_POL"]
-        lsd_flux = lsddata["LSD_FLUX"]
+        lsd_pol = lsddata["LSD_POL"] - pol_cont
+        lsd_flux = lsddata["LSD_FLUX"] / flux_cont
 
     lsd_pol_err = lsddata["LSD_POL_ERR"]
-    lsd_flux_err = lsddata["LSD_FLUX_ERR"]
+    lsd_flux_err = lsddata["LSD_FLUX_ERR"] / flux_cont
 
+    if debug :
+        for i in range(len(bjd)) :
+            plt.plot(lsddata["VELS"], lsd_flux[i], '.', alpha=0.3)
+        plt.plot(lsddata["VELS"], lsddata["LSD_FLUX_MED"]/flux_cont, '-', lw=2)
+        plt.plot(lsddata["VELS"], np.full_like(lsddata["VELS"], 1.), '-', lw=2)
+        plt.show()
+
+        for i in range(len(bjd)) :
+            plt.plot(lsddata["VELS"], lsd_pol[i], '.', alpha=0.3)
+        plt.plot(lsddata["VELS"], lsddata["LSD_POL_MED"]-pol_cont, '-', lw=2)
+        plt.plot(lsddata["VELS"], np.full_like(lsddata["VELS"], 0.), '-', lw=2)
+        plt.show()
+    ##-------------------
+    
     for i in range(len(bjd)) :
     
-        b, berr = spu.longitudinal_b_field(vels, lsd_pol[i], lsd_flux[i], waveavg[i], landeavg[i], pol_err=lsd_pol_err[i], flux_err=lsd_flux_err[i], npcont=3)
+        b, berr = spu.longitudinal_b_field(vels, lsd_pol[i], lsd_flux[i], waveavg[i], landeavg[i], pol_err=lsd_pol_err[i], flux_err=lsd_flux_err[i])
 
         blong.append(b)
         blong_err.append(berr)
@@ -227,7 +248,7 @@ def calculate_blong_timeseries(lsddata, use_corr_data=True, plot=False) :
 
     lsddata["BLONG"], lsddata["BLONG_ERR"] = blong, blong_err
 
-    bmed, bmederr = spu.longitudinal_b_field(vels, lsddata["LSD_POL_MED"], lsddata["LSD_FLUX_MED"], np.mean(waveavg), np.mean(landeavg), pol_err=lsddata["LSD_POL_MED_ERR"], flux_err=lsddata["LSD_FLUX_MED_ERR"], npcont=3)
+    bmed, bmederr = spu.longitudinal_b_field(vels, lsddata["LSD_POL_MED"] - pol_cont, lsddata["LSD_FLUX_MED"]/flux_cont, np.mean(waveavg), np.mean(landeavg), pol_err=lsddata["LSD_POL_MED_ERR"], flux_err=lsddata["LSD_FLUX_MED_ERR"]/flux_cont)
 
     if plot :
         font = {'size': 16}
@@ -313,6 +334,7 @@ def reduce_lsddata(lsddata, niter=3, apply_median_filter=True, median_filter_siz
         lsddata["LSD_POL_CORR"] = lsd_pol_corr_medfilt
         lsddata["LSD_FLUX_CORR"] = lsd_flux_corr_medfilt
         lsddata["LSD_NULL"] = lsd_null_medfilt
+
     else :
         lsddata["LSD_POL"] = lsd_pol['ccf']
         lsddata["LSD_FLUX"] = lsd_flux['ccf']
@@ -328,11 +350,35 @@ def reduce_lsddata(lsddata, niter=3, apply_median_filter=True, median_filter_siz
     return lsddata
 
 
+def continuum_lsd_I(vels, flux, fluxerr, fit_continuum=True, npcont=10, plot=False) :
+    
+    cont_sample, cont_vels = flux[:npcont], vels[:npcont]
+    cont_sample = np.append(cont_sample,flux[-npcont:])
+    cont_vels = np.append(cont_vels,vels[-npcont:])
+    
+    if fit_continuum :
+        c = np.polyfit(cont_vels, cont_sample, 1)
+        p = np.poly1d(c)
+        cont = p(vels)
+    else :
+        c = np.nanmedian(cont_sample)
+        cont = np.full_like(flux, c)
+
+    if plot :
+        # plot flux profile to check continuum
+        plt.errorbar(vels, flux, fluxerr, fmt='.')
+        plt.plot(cont_vels, cont_sample, 'o')
+        plt.plot(vels, cont, '--')
+        plt.show()
+
+    return cont
+
+
 parser = OptionParser()
 parser.add_option("-i", "--input", dest="input", help="Input LSD data pattern",type='string',default="*_lsd.fits")
 parser.add_option("-o", "--output", dest="output", help="Output B-long time series file",type='string',default="")
-parser.add_option("-1", "--min_vel", dest="min_vel", help="Minimum velocity [km/s]",type='float',default=-50.)
-parser.add_option("-2", "--max_vel", dest="max_vel", help="Maximum velocity [km/s]",type='float',default=50.)
+parser.add_option("-1", "--min_vel", dest="min_vel", help="Minimum velocity [km/s]",type='float',default=-60.)
+parser.add_option("-2", "--max_vel", dest="max_vel", help="Maximum velocity [km/s]",type='float',default=60.)
 parser.add_option("-m", action="store_true", dest="median_filter", help="Apply median filter to polar time series", default=False)
 parser.add_option("-p", action="store_true", dest="plot", help="plot", default=False)
 parser.add_option("-v", action="store_true", dest="verbose", help="verbose", default=False)
@@ -359,7 +405,7 @@ vel_min, vel_max = options.min_vel, options.max_vel
 
 lsddata = load_lsd_time_series(inputdata, vel_min=vel_min, vel_max=vel_max, verbose=options.verbose)
 
-lsddata = reduce_lsddata(lsddata, apply_median_filter=options.median_filter, median_filter_size=(6,2), plot=False)
+lsddata = reduce_lsddata(lsddata, apply_median_filter=options.median_filter, median_filter_size=(5,2), plot=False)
 
 lsddata = calculate_blong_timeseries(lsddata, use_corr_data=True, plot=options.plot)
 

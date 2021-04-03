@@ -425,7 +425,7 @@ def plot_lsd_profiles(vels, zz, zz_err, zgauss, z_p, z_p_err, z_p_model, z_np, z
 
 
 
-def longitudinal_b_field(vels, pol, flux, l0, geff, pol_err=[], flux_err=[], npcont=10, plot=False) :
+def longitudinal_b_field(vels, pol, flux, l0, geff, pol_err=[], flux_err=[], fit_continuum=False, fit_polynomial=False, npcont=10, plot=False, debug=False) :
 
     c_kps = (constants.c / 1000.)
     
@@ -441,18 +441,23 @@ def longitudinal_b_field(vels, pol, flux, l0, geff, pol_err=[], flux_err=[], npc
     cont_sample = np.append(cont_sample,flux[-npcont:])
     cont_vels = np.append(cont_vels,vels[-npcont:])
 
-    c = np.polyfit(cont_vels, cont_sample, 1)
-    p = np.poly1d(c)
-    cont = p(vels)
+    if fit_continuum :
+        if fit_polynomial :
+            c = np.polyfit(cont_vels, cont_sample, 1)
+            p = np.poly1d(c)
+            cont = p(vels)
 
-    int_flux = simps((cont - flux), x=vels)
-
-    if plot :
-        # plot flux profile to check continuum
-        plt.plot(vels,flux,'.')
-        plt.plot(cont_vels,cont_sample,'o')
-        plt.plot(vels,cont,'--')
-        plt.show()
+            if plot and debug:
+                # plot flux profile to check continuum
+                plt.plot(vels,flux,'.')
+                plt.plot(cont_vels,cont_sample,'o')
+                plt.plot(vels,cont,'--')
+                plt.show()
+        else :
+            cont = np.nanmedian(cont_sample)
+        int_flux = simps((1.0 - flux/cont), x=vels)
+    else :
+        int_flux = simps((1.0 - flux), x=vels)
 
     if len(flux_err) :
         #cont_err = np.median(np.abs(flux-cont)) / 0.67449

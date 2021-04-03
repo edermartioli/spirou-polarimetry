@@ -136,7 +136,7 @@ if options.plot :
 
 if options.output.endswith(".fits") :
     #spirouPolar.save_pol_fits(options.output, p, loc) # old products
-    spirou_packager.create_pol_product(options.output, p, loc)
+    loc = spirou_packager.create_pol_product(options.output, p, loc)
 
 elif options.output.endswith(".s") :
     spirouPolar.save_pol_le_format(options.output, loc)
