@@ -37,10 +37,91 @@ import spirouPolarUtils as spu
 import spirouLSD
 
 
-def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1e50, verbose=False) :
+def measure_rvs(inputdata, nsigclip=5, set_all_rvs_to_systemic=True, sysrv_type=1, vel_min=-1e50, vel_max=+1e50, plot=False, verbose=False) :
+    
+    lsd_flux = []
+    rv = np.array([])
+    for i in range(len(inputdata)) :
+        hdu = fits.open(inputdata[i])
+        hdr = hdu[0].header + hdu[1].header
+        if i == 0 :
+            vels = hdu['VELOCITY'].data
+        lsd_flux.append(hdu['STOKESI'].data)
+        try :
+            stokesI_fit = spu.fit_lsd_flux_profile(hdu['VELOCITY'].data, hdu['STOKESI'].data, hdu['STOKESI_ERR'].data, guess=None, func_type="gaussian", plot=False)
+            rv = np.append(rv, stokesI_fit["VSHIFT"])
+        except :
+            rv = np.append(rv, np.nan)
+            continue
+
+    systemic_rv1 = np.nanmedian(rv)
+    
+    lsd_flux = np.array(lsd_flux, dtype=float)
+
+    lsd_template = spu.subtract_median(lsd_flux, vels=vels, fit=True, verbose=False, median=True, subtract=True)
+
+    min = np.argmin(lsd_template['ccf_med'])
+
+    rv_min = vels[min]
+
+    fitrange = vels - rv_min > vel_min
+    fitrange &= vels - rv_min < vel_max
+
+    try :
+        median_stokesI_fit = spu.fit_lsd_flux_profile(vels[fitrange], lsd_template['ccf_med'][fitrange], lsd_template['ccf_sig'][fitrange], guess=None, func_type="gaussian", plot=plot)
+        systemic_rv2 = median_stokesI_fit["VSHIFT"]
+    except :
+        systemic_rv2 = systemic_rv1
+
+    sigma = np.nanmean(lsd_template["ccf_sig"])
+
+    for i in range(len(inputdata)) :
+        
+        loc_sigma = np.nanstd(lsd_template["residuals"][i])
+        
+        if verbose :
+            print("Exposure {0}/{1} SysRV={2:.3f} km/s RV={3:.3f} km/s rms={4:.1f} x sigma".format(i, len(inputdata), systemic_rv1, rv[i], loc_sigma/sigma))
+        
+        if loc_sigma/sigma < nsigclip :
+            try :
+                stokesI_fit = spu.fit_lsd_flux_profile(vels[fitrange], lsd_template['ccf'][i][fitrange], lsd_template['ccf_sig'][fitrange], guess=None, func_type="gaussian", plot=False)
+                rv[i] = stokesI_fit["VSHIFT"]
+            except :
+                rv[i] = systemic_rv2
+        else :
+            rv[i] = np.nan
+        #print(inputdata[i], i, rv[i])
+
+    systemic_rv1 = np.nanmedian(rv)
+
+    if set_all_rvs_to_systemic and sysrv_type == 1 :
+        
+        rv = np.full_like(rv,systemic_rv1)
+
+    elif set_all_rvs_to_systemic and sysrv_type == 2 :
+        
+        fitrange = vels - systemic_rv1 > vel_min
+        fitrange &= vels - systemic_rv1 < vel_max
+        try :
+            median_stokesI_fit = spu.fit_lsd_flux_profile(vels[fitrange], lsd_template['ccf_med'][fitrange], lsd_template['ccf_sig'][fitrange], guess=None, func_type="gaussian", plot=plot)
+            systemic_rv2 = median_stokesI_fit["VSHIFT"]
+        except :
+            systemic_rv2 = systemic_rv1
+
+        rv = np.full_like(rv,systemic_rv2)
+
+    return rv
+
+
+def load_lsd_time_series(inputdata, constant_rv=False, nsigclip=5, fit_profile=False, vel_min=-1e50, vel_max=+1e50, verbose=False) :
+    
     loc = {}
 
-    bjd, lsd_rv = [], []
+    lsd_rv = measure_rvs(inputdata, nsigclip=nsigclip, set_all_rvs_to_systemic=constant_rv, vel_min=-20, vel_max=20)
+    
+    maxrv, minrv = np.nanmax(lsd_rv), np.nanmin(lsd_rv)
+    
+    bjd = []
     airmass, snr = [], []
     waveavg, landeavg = [], []
     
@@ -52,22 +133,19 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
     bfield, bfield_err = [], []
     pol_rv, zeeman_split = [], []
     pol_line_depth, pol_fwhm = [], []
-
+    
     for i in range(len(inputdata)) :
+        
+        if np.isnan(lsd_rv[i]) :
+            if verbose:
+                print("Rejecting LSD profile in file {0}/{1}: {2}".format(i, len(inputdata), inputdata[i]))
+            continue
+        
         if verbose:
             print("Loading LSD profile in file {0}/{1}: {2}".format(i, len(inputdata), inputdata[i]))
         
         hdu = fits.open(inputdata[i])
         hdr = hdu[0].header + hdu[1].header
-
-        try :
-            #stokesI_fit = spu.fit_lsd_flux_profile(hdu['VELOCITY'].data, hdu['STOKESI'].data, hdu['STOKESI_ERR'].data, guess=None, func_type="voigt", plot=False)
-            stokesI_fit = spu.fit_lsd_flux_profile(hdu['VELOCITY'].data, hdu['STOKESI'].data, hdu['STOKESI_ERR'].data, guess=None, func_type="gaussian", plot=False)
-            lsd_rv.append(stokesI_fit["VSHIFT"])
-
-        except :
-            print("WARNING: Could not fit gaussian to Stokes I profile, skipping file {0}: {2}".format(i, inputdata[i]))
-            continue
 
         if "MEANBJD" in hdr.keys() :
             bjd.append(float(hdr["MEANBJD"]))
@@ -85,6 +163,17 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
         airmass.append(float(hdr["AIRMASS"]))
 
         if i == 0 :
+            vels_sup_lim = np.nanmax(hdu['VELOCITY'].data)
+            vels_inf_lim = np.nanmin(hdu['VELOCITY'].data)
+
+            if (vel_min + minrv) < vels_inf_lim :
+                print("WARNING: requested RVs outside range, reseting vel_min to {:.1f} km/s".format(vels_inf_lim - minrv))
+                vel_min = vels_inf_lim - minrv
+            
+            if (vel_max + maxrv) > vels_sup_lim :
+                print("WARNING: requested RVs outside range, reseting vel_max to {:.1f} km/s".format(vels_sup_lim - maxrv))
+                vel_max = vels_sup_lim - maxrv
+
             mask = hdu['VELOCITY'].data > vel_min
             mask &= hdu['VELOCITY'].data < vel_max
             vels = hdu['VELOCITY'].data[mask]
@@ -122,7 +211,7 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
         else :
             lsd_pol_gaussmodel.append(np.nan)
             lsd_pol_voigtmodel.append(np.nan)
-            pol_rv.append(stokesI_fit["VSHIFT"])
+            pol_rv.append(lsd_rv[i])
             zeeman_split.append(np.nan)
             pol_line_depth.append(np.nan)
             pol_fwhm.append(np.nan)
@@ -130,7 +219,7 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
             lsd_pol_gaussmodel.append(None)
             lsd_pol_voigtmodel.append(None)
 
-        vels_corr = hdu['VELOCITY'].data - stokesI_fit["VSHIFT"]
+        vels_corr = hdu['VELOCITY'].data - lsd_rv[i]
 
         pol_fit = interp1d(vels_corr, hdu['STOKESVQU'].data, kind='cubic')
         lsd_pol_corr.append(pol_fit(hdu['VELOCITY'].data[mask]))
@@ -148,7 +237,6 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
         hdu.close()
             
     bjd = np.array(bjd)
-    lsd_rv = np.array(lsd_rv)
     airmass, snr = np.array(airmass), np.array(snr)
     landeavg, waveavg = np.array(landeavg), np.array(waveavg)
 
@@ -168,7 +256,7 @@ def load_lsd_time_series(inputdata, fit_profile=False, vel_min=-1e50, vel_max=+1
     lsd_pol_gaussmodel = np.array(lsd_pol_gaussmodel, dtype=float)
     lsd_pol_voigtmodel = np.array(lsd_pol_voigtmodel, dtype=float)
 
-    loc["SOURCE_RV"] = np.median(lsd_rv)
+    loc["SOURCE_RV"] = np.nanmedian(lsd_rv)
     loc["VELS"] = vels
     
     loc["BJD"] = bjd
@@ -379,6 +467,8 @@ parser.add_option("-i", "--input", dest="input", help="Input LSD data pattern",t
 parser.add_option("-o", "--output", dest="output", help="Output B-long time series file",type='string',default="")
 parser.add_option("-1", "--min_vel", dest="min_vel", help="Minimum velocity [km/s]",type='float',default=-60.)
 parser.add_option("-2", "--max_vel", dest="max_vel", help="Maximum velocity [km/s]",type='float',default=60.)
+parser.add_option("-s", "--nsigclip", dest="nsigclip", help="Threshold in number of sigmas to keep LSD",type='float',default=5.)
+parser.add_option("-c", action="store_true", dest="constant_rv", help="Set all profiles with a constant velocity", default=False)
 parser.add_option("-m", action="store_true", dest="median_filter", help="Apply median filter to polar time series", default=False)
 parser.add_option("-p", action="store_true", dest="plot", help="plot", default=False)
 parser.add_option("-v", action="store_true", dest="verbose", help="verbose", default=False)
@@ -394,6 +484,7 @@ if options.verbose:
     print('Output Blong time series file: ', options.output)
     print('Minimum velocity = {0:.2f} km/s: '.format(options.min_vel))
     print('Maximum velocity = {0:.2f} km/s: '.format(options.max_vel))
+    print('Threshold in number of sigmas to keep LSD: {0:.0f}'.format(options.nsigclip))
 
 # make list of data files
 if options.verbose:
@@ -403,7 +494,7 @@ inputdata = sorted(glob.glob(options.input))
 
 vel_min, vel_max = options.min_vel, options.max_vel
 
-lsddata = load_lsd_time_series(inputdata, vel_min=vel_min, vel_max=vel_max, verbose=options.verbose)
+lsddata = load_lsd_time_series(inputdata, constant_rv=options.constant_rv, nsigclip=options.nsigclip, vel_min=vel_min, vel_max=vel_max, verbose=options.verbose)
 
 lsddata = reduce_lsddata(lsddata, apply_median_filter=options.median_filter, median_filter_size=(5,2), plot=False)
 
