@@ -168,11 +168,11 @@ def load_lsd_time_series(inputdata, constant_rv=False, nsigclip=5, fit_profile=F
 
             if (vel_min + minrv) < vels_inf_lim :
                 print("WARNING: requested RVs outside range, reseting vel_min to {:.1f} km/s".format(vels_inf_lim - minrv))
-                vel_min = vels_inf_lim - minrv
+                vel_min = vels_inf_lim
             
             if (vel_max + maxrv) > vels_sup_lim :
                 print("WARNING: requested RVs outside range, reseting vel_max to {:.1f} km/s".format(vels_sup_lim - maxrv))
-                vel_max = vels_sup_lim - maxrv
+                vel_max = vels_sup_lim
 
             mask = hdu['VELOCITY'].data > vel_min
             mask &= hdu['VELOCITY'].data < vel_max
@@ -325,7 +325,6 @@ def calculate_blong_timeseries(lsddata, use_corr_data=True, plot=False, debug=Fa
     ##-------------------
     
     for i in range(len(bjd)) :
-    
         b, berr = spu.longitudinal_b_field(vels, lsd_pol[i], lsd_flux[i], waveavg[i], landeavg[i], pol_err=lsd_pol_err[i], flux_err=lsd_flux_err[i])
 
         blong.append(b)
@@ -465,8 +464,8 @@ def continuum_lsd_I(vels, flux, fluxerr, fit_continuum=True, npcont=10, plot=Fal
 parser = OptionParser()
 parser.add_option("-i", "--input", dest="input", help="Input LSD data pattern",type='string',default="*_lsd.fits")
 parser.add_option("-o", "--output", dest="output", help="Output B-long time series file",type='string',default="")
-parser.add_option("-1", "--min_vel", dest="min_vel", help="Minimum velocity [km/s]",type='float',default=-60.)
-parser.add_option("-2", "--max_vel", dest="max_vel", help="Maximum velocity [km/s]",type='float',default=60.)
+parser.add_option("-1", "--min_vel", dest="min_vel", help="Minimum velocity [km/s]",type='float',default=-35.)
+parser.add_option("-2", "--max_vel", dest="max_vel", help="Maximum velocity [km/s]",type='float',default=35.)
 parser.add_option("-s", "--nsigclip", dest="nsigclip", help="Threshold in number of sigmas to keep LSD",type='float',default=5.)
 parser.add_option("-c", action="store_true", dest="constant_rv", help="Set all profiles with a constant velocity", default=False)
 parser.add_option("-m", action="store_true", dest="median_filter", help="Apply median filter to polar time series", default=False)

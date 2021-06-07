@@ -650,6 +650,7 @@ def fit_lsd_flux_profile(vels, flux, flux_err, guess=None, func_type="voigt", pl
 
     loc = {}
     loc["FUNC_TYPE"] = func_type
+    loc["PFIT"], loc["EFIT"] = pfit, efit
     loc["AMP"], loc["AMP_ERR"] = pfit[0], efit[0]
     loc["VSHIFT"], loc["VSHIFT_ERR"] = pfit[1], efit[1]
     if func_type == "gaussian" :
@@ -730,6 +731,7 @@ def save_lsdstack_to_fits(filename, vels, flux, fluxerr, fluxmodel, pol, polerr,
     mask &= vels < blong_vel_max
 
     b_field, b_field_err = longitudinal_b_field(vels[mask], pol[mask], flux[mask], base_header["WAVEAVG"], base_header["LANDEAVG"], pol_err=polerr[mask], flux_err=fluxerr[mask], npcont=2, plot=True)
+
     print("B_l = {0:.2f} +- {1:.2f} Gauss".format(b_field, b_field_err))
 
     header.set('BLONG', b_field, 'Longitudinal magnetic field (G)')
