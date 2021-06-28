@@ -59,7 +59,7 @@ def lsd_analysis_wrapper(p, loc, verbose=False):
 
     # load spectral lines
     loc = load_lsd_spectral_lines(p, loc, verbose)
-
+    
     # get wavelength ranges covering spectral lines in the ccf mask
     loc = get_wl_ranges(p, loc)
 
@@ -178,7 +178,12 @@ def load_lsd_spectral_lines(p, loc, verbose=False):
 
     # calculate weights for calculation of polarimetric Z-profile
     weight = wlc * depth * lande
-    weight = weight / np.max(weight)
+
+    # Uncomment below to print the information for the line with maximum weight
+    #idxmax = np.argmax(weight)
+    #print(wlc[idxmax], depth[idxmax], lande[idxmax], weight[idxmax])
+
+    weight = weight / np.nanmax(weight)
 
     # store data into loc dict
     loc['LSD_LINES_WLC'] = wlc
@@ -191,6 +196,12 @@ def load_lsd_spectral_lines(p, loc, verbose=False):
     loc['LSD_LINES_POL_EXC_POTENTIAL'] = excpot
     loc['LSD_LINES_POL_FLAG'] = flag
 
+    # uncomment below to print out the clean line mask
+    """
+    print(len(wlc))
+    for i in range(len(wlc)) :
+        print("{0:.4f}  {1:.2f}  {2:.3f}  {3:.3f}  {4:.3f}  {5:.0f}".format(wlc[i],zn[i],depth[i],excpot[i],lande[i],flag[i]))
+    """
     return loc
 
 
