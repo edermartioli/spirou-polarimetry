@@ -43,7 +43,8 @@ except:
 
 if options.verbose:
     print('Input SPIRou spectro-polarimetry file: ', options.input)
-    print('LSD mask: ', options.lsdmask)
+    if options.lsdmask != "" :
+        print('LSD mask: ', options.lsdmask)
     print('Output file: ', options.output)
 
 # set up data storage
@@ -65,6 +66,8 @@ if options.lsdmask != "" :
 else :
     # select an lsd mask file from repositories
     loc['LSD_MASK_FILE'] = spirouLSD.select_lsd_mask(p, loc)
+    print('LSD mask (auto selection): ', loc['LSD_MASK_FILE'])
+
 
 # ------------------------------------------------------------------
 # Run LSD Analysis
